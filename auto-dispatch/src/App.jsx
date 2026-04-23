@@ -1358,7 +1358,7 @@ function ConfigPage({
                     <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 bg-neutral-50/50 rounded-t-lg">
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                          Route to
+                          Dispatch to
                         </span>
                         <Select
                           value={rule.board}
@@ -1414,7 +1414,7 @@ function ConfigPage({
                 className="flex items-center gap-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 px-2 py-1.5"
               >
                 <Plus size={14} />
-                Add rule
+                Add dispatch route
               </button>
 
             </div>

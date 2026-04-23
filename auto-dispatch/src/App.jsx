@@ -22,6 +22,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import {
   ArrowLeft,
   Activity,
@@ -129,7 +130,7 @@ function Select({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`flex items-center justify-between gap-2 min-w-[140px] px-3 py-1.5 bg-white border border-neutral-200 rounded-md text-sm hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 ${triggerClassName}`}
+        className={`flex items-center justify-between gap-2 max-w-[220px] px-3 py-1.5 bg-white border border-neutral-200 rounded-md text-sm hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 ${triggerClassName}`}
       >
         <span className={`truncate ${isEmpty ? "text-neutral-400" : "text-neutral-800"}`}>
           {value || placeholder}
@@ -233,7 +234,7 @@ function MultiSelect({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`flex items-center justify-between gap-2 min-w-[140px] px-3 py-1.5 bg-white border border-neutral-200 rounded-md text-sm text-neutral-800 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 ${triggerClassName}`}
+        className={`flex items-center justify-between gap-2 max-w-[220px] px-3 py-1.5 bg-white border border-neutral-200 rounded-md text-sm text-neutral-800 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 ${triggerClassName}`}
       >
         <span className={`truncate ${values.length === 0 ? "text-neutral-400" : ""}`}>
           {label}
@@ -1072,6 +1073,11 @@ function ConfigPage({
   const [priority, setPriority] = useState("Highest first");
   const [ticketAge, setTicketAge] = useState("Oldest first");
   const [techSelection, setTechSelection] = useState("Most open time");
+  const [maxActiveTickets, setMaxActiveTickets] = useState(15);
+
+  // --- Agent autonomy (Assign + Assign+Schedule)
+  const [limitWorkload, setLimitWorkload] = useState(false);
+  const [workloadPct, setWorkloadPct] = useState(50);
 
   // --- Route mode rules
   const FIELD_META = {
@@ -1298,7 +1304,6 @@ function ConfigPage({
               placeholder="Select board"
               searchable
               searchPlaceholder="Search boards..."
-              triggerClassName="min-w-[220px]"
               dropdownClassName="w-[280px] max-h-[30rem]"
             />
           </Row>
@@ -1312,7 +1317,6 @@ function ConfigPage({
                 value={statusMode}
                 options={["Include only", "Exclude"]}
                 onChange={setStatusMode}
-                triggerClassName="!min-w-0"
               />
               <MultiSelect
                 values={statuses}
@@ -1321,7 +1325,6 @@ function ConfigPage({
                 placeholder="Select status"
                 searchable
                 searchPlaceholder="Search statuses..."
-                triggerClassName="!min-w-0 max-w-[200px]"
                 dropdownClassName="w-[320px] max-h-[34rem]"
               />
             </div>
@@ -1366,7 +1369,6 @@ function ConfigPage({
                           onChange={(b) => updateRule(rule.id, { board: b })}
                           searchable
                           searchPlaceholder="Search boards..."
-                          triggerClassName="!min-w-0 max-w-[200px]"
                           dropdownClassName="w-[280px] max-h-[30rem]"
                         />
                       </div>
@@ -1421,20 +1423,15 @@ function ConfigPage({
           </div>
         )}
 
-        {/* Working hours — Assign (hours only) + Assign+Schedule (full) */}
-        {!isRoute && (
+        {/* Working hours — Assign+Schedule only */}
+        {isSchedule && (
           <Section
-            title={isSchedule ? "Working hours and scheduling" : "Working hours"}
-            subcopy={
-              isSchedule
-                ? "Control the hours and time windows the agent operates within."
-                : "Control the hours the agent operates within."
-            }
+            title="Working hours and scheduling"
+            subcopy="Control the hours and time windows the agent operates within."
           >
             <Row
               label="Working hours"
               subcopy="The hours during which new tickets will be automatically dispatched to this team. Time zone is pulled from your workspace settings."
-              noBorder={!isSchedule}
             >
               <div className="flex items-center gap-2">
                 <Select value={startTime} options={HOUR_OPTIONS} onChange={setStartTime} />
@@ -1446,8 +1443,7 @@ function ConfigPage({
               </div>
             </Row>
 
-            {isSchedule && (
-              <>
+            <>
                 <Row
                   label="Schedule offset"
                   subcopy="How far ahead to start scheduling. At 8:15 AM with a 60-min offset, the earliest slot is 9:15 AM."
@@ -1506,7 +1502,6 @@ function ConfigPage({
                   <ComingSoon />
                 </Row>
               </>
-            )}
           </Section>
         )}
 
@@ -1547,6 +1542,25 @@ function ConfigPage({
                 onChange={setTechSelection}
               />
             </Row>
+            {isAssign && (
+              <Row
+                label="Max active tickets per tech"
+                subcopy="Once a tech reaches this number of active tickets, the agent will skip them and pick another tech with capacity."
+              >
+                <input
+                  type="number"
+                  min={1}
+                  value={maxActiveTickets}
+                  onChange={(e) => {
+                    const parsed = Number(e.target.value);
+                    setMaxActiveTickets(
+                      Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1
+                    );
+                  }}
+                  className="w-24 px-3 py-1.5 bg-white border border-neutral-200 rounded-md text-sm text-neutral-800 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </Row>
+            )}
             <Row
               label="SLA risk"
               subcopy="Prioritize tickets closest to breaching their SLA first."
@@ -1568,6 +1582,41 @@ function ConfigPage({
             </Row>
           </Section>
         )}
+
+        {/* Agent autonomy — all modes */}
+        <Section
+          title="Agent autonomy"
+          subcopy="Control how much of the dispatching work the agent handles automatically."
+        >
+            <Row
+              label="Limit agent workload"
+              subcopy="When enabled, the agent will only handle a percentage of incoming tickets. The rest stay unassigned for manual review."
+              noBorder={!limitWorkload}
+            >
+              <Toggle checked={limitWorkload} onChange={setLimitWorkload} />
+            </Row>
+            {limitWorkload && (
+              <Row
+                label="Percentage of tickets handled"
+                subcopy="The agent will automatically dispatch this percentage of new tickets."
+                noBorder
+              >
+                <div className="flex items-center gap-3">
+                  <Slider
+                    min={10}
+                    max={100}
+                    step={1}
+                    value={[workloadPct]}
+                    onValueChange={([v]) => setWorkloadPct(v)}
+                    className="w-48"
+                  />
+                  <span className="text-sm text-neutral-700 tabular-nums min-w-[3ch] text-right">
+                    {workloadPct}%
+                  </span>
+                </div>
+              </Row>
+            )}
+        </Section>
 
         {/* Save / Cancel */}
         <div className="flex flex-col items-end gap-2 pb-12">

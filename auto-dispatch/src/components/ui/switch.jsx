@@ -1,28 +1,28 @@
 import * as React from "react";
+import * as SwitchPrimitives from "@radix-ui/react-switch";
 
-export function Switch({ checked = false, onCheckedChange, className = "" }) {
-  const handleToggle = () => onCheckedChange?.(!checked);
-
+export const Switch = React.forwardRef(function Switch(
+  { className = "", ...props },
+  ref
+) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      data-state={checked ? "checked" : "unchecked"}
-      onClick={handleToggle}
+    <SwitchPrimitives.Root
+      ref={ref}
       className={[
-        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-        "bg-neutral-300 data-[state=checked]:bg-emerald-500",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40",
+        "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        "data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-neutral-300",
         className,
       ].join(" ")}
+      {...props}
     >
-      <span
+      <SwitchPrimitives.Thumb
         className={[
-          "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
-          checked ? "translate-x-5" : "translate-x-0.5",
+          "pointer-events-none block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform",
+          "data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
         ].join(" ")}
       />
-    </button>
+    </SwitchPrimitives.Root>
   );
-}
+});

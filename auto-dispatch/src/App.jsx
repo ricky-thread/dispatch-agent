@@ -39,6 +39,7 @@ import {
   Globe,
   HelpCircle,
   Inbox,
+  Info,
   LayoutGrid,
   MessageSquare,
   MoreHorizontal,
@@ -184,6 +185,7 @@ function MultiSelect({
   dropdownClassName = "",
   searchable = false,
   searchPlaceholder = "Type to filter...",
+  withSelectAll = false,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -243,10 +245,11 @@ function MultiSelect({
       </button>
       {open && (
         <div
-          className={`absolute right-0 top-full mt-1 min-w-full bg-white border border-neutral-200 rounded-md shadow-lg py-1 z-20 max-h-64 overflow-y-auto ${dropdownClassName}`}
+          className={`absolute right-0 top-full mt-1 min-w-full bg-white border border-neutral-200 rounded-md shadow-lg z-20 flex flex-col ${dropdownClassName}`}
+          style={{ maxHeight: "min(34rem, calc(100vh - 6rem))" }}
         >
           {searchable && (
-            <div className="sticky top-0 bg-white px-2 pb-2 pt-1 border-b border-neutral-100">
+            <div className="px-2 pb-2 pt-1 border-b border-neutral-100 shrink-0">
               <input
                 ref={searchInputRef}
                 value={query}
@@ -256,34 +259,54 @@ function MultiSelect({
               />
             </div>
           )}
-          {filteredOptions.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-neutral-500">No matches found</div>
-          ) : (
-            filteredOptions.map((opt) => {
-              const selected = values.includes(opt);
-              return (
-                <button
-                  key={opt}
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    toggle(opt);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-sm text-neutral-800 hover:bg-neutral-50 whitespace-nowrap flex items-center gap-2"
-                >
-                  <span
-                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                      selected
-                        ? "bg-emerald-500 border-emerald-500"
-                        : "bg-white border-neutral-300"
-                    }`}
+          <div className="flex-1 overflow-y-auto py-1 min-h-0">
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-neutral-500">No matches found</div>
+            ) : (
+              filteredOptions.map((opt) => {
+                const selected = values.includes(opt);
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      toggle(opt);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-sm text-neutral-800 hover:bg-neutral-50 whitespace-nowrap flex items-center gap-2"
                   >
-                    {selected && <Check size={11} className="text-white" strokeWidth={3} />}
-                  </span>
-                  {opt}
-                </button>
-              );
-            })
+                    <span
+                      className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                        selected
+                          ? "bg-emerald-500 border-emerald-500"
+                          : "bg-white border-neutral-300"
+                      }`}
+                    >
+                      {selected && <Check size={11} className="text-white" strokeWidth={3} />}
+                    </span>
+                    {opt}
+                  </button>
+                );
+              })
+            )}
+          </div>
+          {withSelectAll && options.length > 0 && (
+            <div className="border-t border-neutral-100 px-1.5 py-1.5 shrink-0 bg-white rounded-b-md">
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (values.length === options.length) {
+                    onChange([]);
+                  } else {
+                    onChange([...options]);
+                  }
+                }}
+                className="w-full text-left px-2 py-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 hover:bg-neutral-50 rounded-md"
+              >
+                {values.length === options.length ? "Clear all" : "Select all"}
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -645,6 +668,88 @@ function Section({ title, subcopy, children }) {
 
 function ComingSoon() {
   return <span className="text-sm text-neutral-400">Coming soon</span>;
+}
+
+// Ticket context the routing agent receives alongside each prompt. The agent
+// reads these values directly — users should write rules in plain language
+// rather than referencing the {{token}} names.
+const AGENT_CONTEXT_FIELDS = [
+  { label: "Contact company name", token: "company_name" },
+  { label: "Contact company type", token: "company_type" },
+  { label: "Ticket contact name", token: "contact_name" },
+  { label: "Ticket contact types", token: "contact_type" },
+  { label: "Ticket summary", token: "summary" },
+  { label: "Ticket chat history", token: "ticket_chat" },
+  { label: "Ticket priority", token: "priority" },
+  { label: "Ticket type", token: "type" },
+  { label: "Ticket subtype", token: "subtype" },
+  { label: "Ticket item", token: "item" },
+  { label: "Ticket agreement name", token: "ticket_agreement" },
+  { label: "Ticket agreement type", token: "ticket_agreement_type" },
+  { label: "Ticket configuration", token: "ticket_configuration" },
+];
+
+function AgentContextPopover() {
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef(null);
+
+  const handleEnter = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpen(true);
+  };
+  const handleLeave = () => {
+    closeTimer.current = setTimeout(() => setOpen(false), 120);
+  };
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+      onFocus={handleEnter}
+      onBlur={handleLeave}
+    >
+      <button
+        type="button"
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900 px-2 py-1 rounded-md hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
+        <Info size={13} />
+        Agent context
+      </button>
+      {open && (
+        <div
+          role="tooltip"
+          className="absolute right-0 top-full mt-2 w-[340px] bg-white border border-neutral-200 rounded-lg shadow-lg p-4 z-30"
+        >
+          <div className="text-sm font-medium text-neutral-900 mb-1.5">
+            What the agent already knows
+          </div>
+          <p className="text-xs text-neutral-600 leading-relaxed mb-3">
+            The agent reads each ticket&apos;s details before evaluating your rules. Write your
+            prompt in plain, natural language — you don&apos;t need to reference variable names.
+          </p>
+          <div className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider mb-1.5">
+            Available context
+          </div>
+          <ul className="space-y-1">
+            {AGENT_CONTEXT_FIELDS.map((f) => (
+              <li
+                key={f.token}
+                className="flex items-center justify-between gap-3 text-xs text-neutral-700"
+              >
+                <span>{f.label}</span>
+                <span className="font-mono text-[11px] text-neutral-400">
+                  {`{{${f.token}}}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // =============================================================================
@@ -1180,7 +1285,8 @@ function ConfigPage({
   const removeRule = (id) =>
     setRules((r) => r.filter((rule) => rule.id !== id));
 
-  const rulePlaceholder = "Add extra context to help the agent route to this board.";
+  const rulePlaceholder =
+    "Add anything to help the agent route tickets to this board. Instructions you add here will be considered in addition to the agent's context.";
 
   // ---------------------------------------------------------------------------
   // Conflict detection
@@ -1325,7 +1431,8 @@ function ConfigPage({
                 placeholder="Select status"
                 searchable
                 searchPlaceholder="Search statuses..."
-                dropdownClassName="w-[320px] max-h-[34rem]"
+                dropdownClassName="w-[320px]"
+                withSelectAll
               />
             </div>
           </Row>
@@ -1334,12 +1441,17 @@ function ConfigPage({
         {/* Route mode: rules */}
         {isRoute && (
           <div className="mb-10">
-            <div className="mb-3">
-              <h2 className="text-base font-semibold text-neutral-900">Routing rules</h2>
-              <p className="text-sm text-neutral-500 mt-0.5">
-                Add a rule for each board you want to route tickets to. The agent reads all rules
-                together and picks the best fit for each ticket.
-              </p>
+            <div className="mb-3 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-neutral-900">Routing rules</h2>
+                <p className="text-sm text-neutral-500 mt-0.5">
+                  Add a rule for each board you want to route tickets to. The agent reads all rules
+                  together and picks the best fit for each ticket.
+                </p>
+              </div>
+              <div className="shrink-0 pt-0.5">
+                <AgentContextPopover />
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -1359,8 +1471,8 @@ function ConfigPage({
                     }`}
                   >
                     <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 bg-neutral-50/50 rounded-t-lg">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm text-neutral-700">
                           Dispatch to
                         </span>
                         <Select
@@ -1369,8 +1481,12 @@ function ConfigPage({
                           onChange={(b) => updateRule(rule.id, { board: b })}
                           searchable
                           searchPlaceholder="Search boards..."
+                          triggerClassName="h-7 py-0"
                           dropdownClassName="w-[280px] max-h-[30rem]"
                         />
+                        <span className="text-sm text-neutral-700">
+                          when...
+                        </span>
                       </div>
                       {rules.length > 1 && (
                         <button
@@ -1387,6 +1503,7 @@ function ConfigPage({
                         {error}
                       </div>
                     )}
+                    {/* When... + filter conditions — temporarily hidden, may be reintroduced later
                     <div className="px-4 pt-3 pb-1">
                       <div className="flex items-center gap-3 flex-wrap mb-2">
                         <span className="text-sm text-neutral-800">When...</span>
@@ -1399,6 +1516,7 @@ function ConfigPage({
                         />
                       </div>
                     </div>
+                    */}
                     <div className="p-1">
                       <textarea
                         value={rule.prompt}

@@ -24,15 +24,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import FlowsPage from "./components/flows/FlowsPage";
+import {
   ArrowLeft,
   Activity,
   Briefcase,
   Building2,
-  CalendarClock,
   Check,
   CheckSquare,
   ChevronDown,
-  Copy,
   File,
   FileText,
   Folder,
@@ -41,6 +46,7 @@ import {
   Inbox,
   Info,
   LayoutGrid,
+  Lock,
   MessageSquare,
   MoreHorizontal,
   Package,
@@ -51,14 +57,12 @@ import {
   Search,
   Settings,
   ShieldCheck,
-  Shuffle,
   Sparkles,
   Star,
   Tag,
   Target,
   Trash2,
   Users,
-  UserPlus,
   Wallet,
   Wand2,
   Workflow,
@@ -73,8 +77,36 @@ import {
   HOUR_OPTIONS,
   ROUTE_CONDITION_FIELDS,
   ROUTE_CONDITION_VALUES,
-  TEAM_COLORS,
 } from "./constants";
+
+const TEAM_MEMBERS = {
+  "Team Red": ["Avery Reed", "Mina Patel", "Noah Brooks", "Jules Hart"],
+  "Team Blue": ["Leah Kim", "Owen Price", "Rosa Diaz", "Eli Turner"],
+  "Team Green": ["Maya Singh", "Luca Romano", "Ivy Chen", "Max Foster"],
+  "Network Ops": ["Nina Walsh", "Caleb Young", "Priya Shah", "Jon Park"],
+  Procurement: ["Sam Rivera", "Tara Wells", "Gabe King", "Mia Scott"],
+};
+
+const normalizeSelections = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (value) return [value];
+  return [];
+};
+
+/** Avatar swatches for the agent identity picker (IDs persisted on saved agents). */
+const AGENT_AVATAR_PRESETS = [
+  { id: "avatar-1", swatch: "bg-gradient-to-br from-sky-400 to-emerald-500" },
+  { id: "avatar-2", swatch: "bg-gradient-to-br from-violet-500 to-fuchsia-500" },
+  { id: "avatar-3", swatch: "bg-gradient-to-br from-amber-400 to-orange-500" },
+  { id: "avatar-4", swatch: "bg-gradient-to-br from-cyan-400 to-blue-600" },
+  { id: "avatar-5", swatch: "bg-gradient-to-br from-rose-400 to-red-500" },
+  { id: "avatar-6", swatch: "bg-gradient-to-br from-emerald-300 to-emerald-600" },
+];
+
+function avatarSwatchClass(avatarId) {
+  const preset = AGENT_AVATAR_PRESETS.find((a) => a.id === avatarId);
+  return preset?.swatch ?? AGENT_AVATAR_PRESETS[0].swatch;
+}
 
 function newConditionId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -186,6 +218,20 @@ function MultiSelect({
   searchable = false,
   searchPlaceholder = "Type to filter...",
   withSelectAll = false,
+  disabled = false,
+  disabledMessage = "Disabled",
+  disabledOptions = {},
+  getDisabledReason = null,
+  /** option value → agent name claiming it; shows “Used by …” with truncation (Team/Board). */
+  disabledClaims = {},
+  renderOptionLabel = null,
+  renderChipLabel = null,
+  summaryLabel = null,
+  showCount = false,
+  totalCount = null,
+  showChips = false,
+  /** When false, trigger only shows placeholder; selections are shown elsewhere (e.g. chip row). */
+  selectionInTrigger = true,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -217,6 +263,9 @@ function MultiSelect({
   }, [open, searchable]);
 
   const toggle = (opt) => {
+    if (disabledClaims?.[opt]) return;
+    const reason = getDisabledReason?.(opt) || disabledOptions?.[opt];
+    if (reason) return;
     if (values.includes(opt)) {
       onChange(values.filter((v) => v !== opt));
     } else {
@@ -224,26 +273,82 @@ function MultiSelect({
     }
   };
 
+  const removeValue = (opt) => onChange(values.filter((v) => v !== opt));
+
   const label =
-    values.length === 0
-      ? placeholder
-      : values.length === 1
-      ? values[0]
-      : `${values.length} selected`;
+    summaryLabel ??
+    (selectionInTrigger
+      ? values.length === 0
+        ? placeholder
+        : values.length === 1
+        ? values[0]
+        : `${values.length} selected`
+      : placeholder);
+
+  const triggerMuted =
+    disabled ||
+    (selectionInTrigger && values.length === 0) ||
+    (!selectionInTrigger && values.length === 0);
 
   return (
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`flex items-center justify-between gap-2 max-w-[220px] px-3 py-1.5 bg-white border border-neutral-200 rounded-md text-sm text-neutral-800 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 ${triggerClassName}`}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        title={disabled ? disabledMessage : undefined}
+        className={`flex items-center justify-between gap-2 max-w-[220px] min-h-[34px] px-3 py-1.5 bg-white border border-neutral-200 rounded-md text-sm text-neutral-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 ${
+          disabled
+            ? "opacity-60 cursor-not-allowed bg-neutral-50"
+            : "hover:border-neutral-300"
+        } ${triggerClassName}`}
       >
-        <span className={`truncate ${values.length === 0 ? "text-neutral-400" : ""}`}>
-          {label}
+        <span
+          className={`flex-1 text-left ${triggerMuted ? "text-neutral-400" : "text-neutral-800"}`}
+        >
+          {selectionInTrigger && showChips && values.length > 0 ? (
+            <span className="flex flex-wrap items-center gap-1">
+              {values.map((opt) => (
+                <span
+                  key={opt}
+                  className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-700 max-w-[170px]"
+                >
+                  <span className="truncate">{renderChipLabel?.(opt) || opt}</span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="text-neutral-500 hover:text-neutral-700 inline-flex"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      removeValue(opt);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        removeValue(opt);
+                      }
+                    }}
+                    aria-label={`Remove ${opt}`}
+                  >
+                    <X size={11} />
+                  </span>
+                </span>
+              ))}
+            </span>
+          ) : (
+            <span className="truncate block">{label}</span>
+          )}
         </span>
+        {selectionInTrigger && showCount && values.length > 0 && (
+          <span className="text-xs text-neutral-500 shrink-0 tabular-nums">
+            {values.length}
+            {typeof totalCount === "number" ? ` / ${totalCount}` : ""}
+          </span>
+        )}
         <ChevronDown size={14} className="text-neutral-400 shrink-0" />
       </button>
-      {open && (
+      {open && !disabled && (
         <div
           className={`absolute right-0 top-full mt-1 min-w-full bg-white border border-neutral-200 rounded-md shadow-lg z-20 flex flex-col ${dropdownClassName}`}
           style={{ maxHeight: "min(34rem, calc(100vh - 6rem))" }}
@@ -265,6 +370,64 @@ function MultiSelect({
             ) : (
               filteredOptions.map((opt) => {
                 const selected = values.includes(opt);
+                const usedByAgentName = disabledClaims?.[opt];
+                const legacyDisabledReason =
+                  !usedByAgentName && (getDisabledReason?.(opt) || disabledOptions?.[opt]);
+                const optionDisabled = Boolean(usedByAgentName || legacyDisabledReason);
+                if (optionDisabled) {
+                  const tooltipText = usedByAgentName
+                    ? `Used by ${usedByAgentName}`
+                    : legacyDisabledReason;
+                  const rowInner = (
+                    <>
+                      <span className="h-4 w-4 shrink-0" aria-hidden />
+                      <span className="min-w-0 flex-1 truncate text-neutral-400">
+                        {renderOptionLabel?.(opt) || opt}
+                      </span>
+                      {usedByAgentName ? (
+                        <Lock
+                          size={13}
+                          className="shrink-0 text-neutral-400"
+                          strokeWidth={2}
+                          aria-hidden
+                        />
+                      ) : (
+                        <span className="shrink-0 text-[11px] font-medium text-neutral-400">
+                          In use
+                        </span>
+                      )}
+                    </>
+                  );
+                  if (tooltipText) {
+                    return (
+                      <Tooltip key={opt} delayDuration={120}>
+                        <TooltipTrigger asChild>
+                          <div
+                            role="option"
+                            aria-disabled="true"
+                            className="flex w-full min-w-0 cursor-not-allowed items-center gap-2 bg-neutral-50/90 px-3 py-1.5 text-left text-sm outline-none"
+                          >
+                            {rowInner}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" align="center">
+                          {tooltipText}
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                  }
+                  return (
+                    <div
+                      key={opt}
+                      role="option"
+                      aria-disabled="true"
+                      title={tooltipText || undefined}
+                      className="flex w-full min-w-0 cursor-not-allowed items-center gap-2 bg-neutral-50/90 px-3 py-1.5 text-left text-sm"
+                    >
+                      {rowInner}
+                    </div>
+                  );
+                }
                 return (
                   <button
                     key={opt}
@@ -273,18 +436,20 @@ function MultiSelect({
                       e.preventDefault();
                       toggle(opt);
                     }}
-                    className="w-full text-left px-3 py-1.5 text-sm text-neutral-800 hover:bg-neutral-50 whitespace-nowrap flex items-center gap-2"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
                   >
                     <span
-                      className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
                         selected
-                          ? "bg-emerald-500 border-emerald-500"
-                          : "bg-white border-neutral-300"
+                          ? "border-emerald-500 bg-emerald-500"
+                          : "border-neutral-300 bg-white"
                       }`}
                     >
                       {selected && <Check size={11} className="text-white" strokeWidth={3} />}
                     </span>
-                    {opt}
+                    <span className={`min-w-0 flex-1 truncate ${selected ? "font-semibold" : ""}`}>
+                      {renderOptionLabel?.(opt) || opt}
+                    </span>
                   </button>
                 );
               })
@@ -310,6 +475,173 @@ function MultiSelect({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Chips + inline filter inside one bordered control; dropdown lists members on focus/click. */
+function ExcludeTechsCombo({
+  values,
+  onChange,
+  options,
+  disabled,
+  disabledMessage = "Select teams first",
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const rootRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredMembers = useMemo(
+    () => options.filter((m) => m.toLowerCase().includes(normalizedQuery)),
+    [options, normalizedQuery]
+  );
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event) => {
+      if (rootRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
+  const toggleMember = (member) => {
+    if (values.includes(member)) {
+      onChange(values.filter((v) => v !== member));
+    } else {
+      onChange([...values, member]);
+    }
+  };
+
+  return (
+    <div ref={rootRef} className="relative w-full">
+      <div
+        className={`flex w-full min-h-[42px] items-stretch gap-2 rounded-md border bg-white px-2 py-1.5 transition-shadow ${
+          disabled
+            ? "cursor-not-allowed border-neutral-200 bg-neutral-50 opacity-75"
+            : `cursor-text border-neutral-200 hover:border-neutral-300 ${
+                open ? "border-emerald-500 ring-2 ring-emerald-500/20" : ""
+              }`
+        }`}
+        onMouseDown={(e) => {
+          if (disabled) return;
+          if (e.target.closest("[data-chip-remove]")) return;
+          e.preventDefault();
+          inputRef.current?.focus();
+          setOpen(true);
+        }}
+      >
+        <div className="flex min-h-[28px] min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {values.map((member) => (
+            <span
+              key={member}
+              className="inline-flex max-w-[240px] items-center gap-1 rounded-md border border-neutral-300 bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800"
+            >
+              <span className="truncate">{member}</span>
+              <button
+                type="button"
+                data-chip-remove
+                className="shrink-0 rounded p-0.5 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onChange(values.filter((v) => v !== member));
+                }}
+                aria-label={`Remove ${member}`}
+              >
+                <X size={11} strokeWidth={2.5} />
+              </button>
+            </span>
+          ))}
+          <input
+            ref={inputRef}
+            type="text"
+            disabled={disabled}
+            autoComplete="off"
+            aria-autocomplete="list"
+            aria-expanded={open}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => {
+              if (!disabled) setOpen(true);
+            }}
+            placeholder={
+              disabled
+                ? disabledMessage
+                : values.length === 0
+                  ? "Search members…"
+                  : "Filter…"
+            }
+            className="min-w-[96px] flex-1 bg-transparent py-1 pl-1 pr-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+          />
+        </div>
+        {!disabled && options.length > 0 ? (
+          <div className="flex shrink-0 items-center border-l border-neutral-200 pl-2">
+            <span className="whitespace-nowrap text-xs tabular-nums text-neutral-500">
+              {values.length} / {options.length}
+            </span>
+          </div>
+        ) : null}
+      </div>
+
+      {open && !disabled ? (
+        <div
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-40 max-h-64 overflow-y-auto rounded-md border border-neutral-200 bg-white py-1 shadow-lg"
+          role="listbox"
+        >
+          {filteredMembers.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-neutral-500">No matching members</div>
+          ) : (
+            filteredMembers.map((member) => {
+              const selected = values.includes(member);
+              return (
+                <button
+                  key={member}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    toggleMember(member);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      selected
+                        ? "border-emerald-500 bg-emerald-500"
+                        : "border-neutral-300 bg-white"
+                    }`}
+                  >
+                    {selected ? <Check size={11} className="text-white" strokeWidth={3} /> : null}
+                  </span>
+                  <span className={`min-w-0 flex-1 truncate ${selected ? "font-semibold" : ""}`}>
+                    {member}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -626,23 +958,35 @@ function RouteRuleConditionsEditor({ fields, conditions = [], onChange }) {
   );
 }
 
-function Toggle({ checked, onChange }) {
+function Toggle({ checked, onChange, size = "default" }) {
   return (
-    <Switch
-      checked={checked}
-      onCheckedChange={onChange}
-      className="data-[state=checked]:bg-emerald-500"
-    />
+    <Switch checked={checked} onCheckedChange={onChange} size={size} />
   );
 }
 
-function Row({ label, subcopy, children, noBorder = false }) {
+function Row({
+  label,
+  subcopy,
+  children,
+  noBorder = false,
+  stacked = false,
+  align = "start",
+}) {
+  const borderCls = noBorder ? "" : "border-b border-neutral-100";
+  const rowAlign = align === "center" ? "items-center" : "items-start";
+  if (stacked) {
+    return (
+      <div className={`px-5 py-4 ${borderCls}`}>
+        <div className="text-sm font-medium text-neutral-900">{label}</div>
+        {subcopy && (
+          <div className="text-sm text-neutral-500 mt-0.5 leading-snug">{subcopy}</div>
+        )}
+        <div className="mt-3 w-full min-w-0">{children}</div>
+      </div>
+    );
+  }
   return (
-    <div
-      className={`flex items-start justify-between gap-6 px-5 py-4 ${
-        noBorder ? "" : "border-b border-neutral-100"
-      }`}
-    >
+    <div className={`flex ${rowAlign} justify-between gap-6 px-5 py-4 ${borderCls}`}>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-neutral-900">{label}</div>
         {subcopy && (
@@ -756,7 +1100,11 @@ function AgentContextPopover() {
 // SIDEBAR
 // =============================================================================
 
-function Sidebar({ active = "Auto-dispatch" }) {
+// Items that have an actual destination wired up. Other sidebar items are
+// visible for layout but click-to-nothing — they don't switch sections.
+const NAVIGABLE_ITEMS = new Set(["Auto-dispatch", "Flows"]);
+
+function Sidebar({ active = "Auto-dispatch", onSelect }) {
   const groups = [
     {
       label: "Magic AI",
@@ -798,7 +1146,7 @@ function Sidebar({ active = "Auto-dispatch" }) {
   ];
 
   return (
-    <aside className="w-56 shrink-0 bg-white border-r border-neutral-200 flex flex-col">
+    <aside className="w-56 shrink-0 bg-[#FAF9F6] border-r border-neutral-200 flex flex-col">
       <div className="px-4 py-4 flex items-center gap-2">
         <div className="w-6 h-6 rounded-full bg-red-500 flex items-center justify-center">
           <div className="w-2 h-2 rounded-full bg-white" />
@@ -825,19 +1173,23 @@ function Sidebar({ active = "Auto-dispatch" }) {
               {g.label}
             </div>
             <div className="space-y-0.5">
-              {g.items.map(({ icon: Icon, label }) => (
-                <div
-                  key={label}
-                  className={`flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm cursor-pointer ${
-                    active === label
-                      ? "bg-neutral-100 text-neutral-900 font-medium"
-                      : "text-neutral-600 hover:bg-neutral-50"
-                  }`}
-                >
-                  <Icon size={15} className="shrink-0" />
-                  <span>{label}</span>
-                </div>
-              ))}
+              {g.items.map(({ icon: Icon, label }) => {
+                const navigable = NAVIGABLE_ITEMS.has(label);
+                return (
+                  <div
+                    key={label}
+                    onClick={() => navigable && onSelect?.(label)}
+                    className={`flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm ${
+                      active === label
+                        ? "bg-[rgba(229,228,224,0.55)] text-neutral-900 font-medium"
+                        : "text-neutral-600 hover:bg-[rgba(229,228,224,0.55)]"
+                    } ${navigable ? "cursor-pointer" : "cursor-default"}`}
+                  >
+                    <Icon size={15} className="shrink-0" />
+                    <span>{label}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}
@@ -866,43 +1218,36 @@ function AgentCard({
   onOpen,
   onEdit,
   onDelete,
-  onDuplicate,
   onToggleActive,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const isRoute = agent.mode === "Route";
+  const agentTeams = normalizeSelections(agent.teams ?? agent.team);
+  const agentBoards = normalizeSelections(agent.boards ?? agent.board);
+  const leadTeam = agentTeams[0] || "Unassigned";
 
-  const title = isRoute ? "Routing Agent" : `${agent.team} Dispatch Agent`;
-  const subtitle = isRoute
-    ? `Dispatching from ${agent.board || "{Board}"}${
-        agent.destinations?.length
-          ? ` to ${agent.destinations.join(", ")}`
-          : ""
-      }`
-    : `Dispatching from ${agent.board} from 8:00 AM to 6:00 PM`;
+  const fallbackTitle =
+    agent.mode === "Route" ? "Routing Agent" : `${leadTeam} Dispatch Agent`;
+  const displayTitle = agent.name?.trim() || fallbackTitle;
+  const boardCount = agentBoards.length;
+  const teamCount = agentTeams.length;
+  const boardNoun = boardCount === 1 ? "board" : "boards";
+  const teamNoun = teamCount === 1 ? "team" : "teams";
+  const subtitle = `Dispatching from ${boardCount} ${boardNoun} across ${teamCount} ${teamNoun}`;
 
   return (
     <div className="bg-white border border-neutral-200 rounded-xl overflow-visible">
-      {/* Top row: icon, title, toggle */}
-      <div
-        className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-neutral-50 rounded-t-xl"
-        onClick={onOpen}
-      >
-        {isRoute ? (
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-            <Shuffle size={18} className="text-emerald-600" />
-          </div>
-        ) : (
+      {/* Top row: icon, title, toggle (no row hover — open agent from configuration strip or ⋯) */}
+      <div className="flex items-center gap-4 px-5 py-4 rounded-t-xl">
+        <div
+          className="flex size-9 shrink-0 items-center justify-center rounded-[8px] border border-neutral-200 bg-[#FAF9F6]"
+          aria-hidden
+        >
           <div
-            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-              TEAM_COLORS[agent.team] || "bg-neutral-400"
-            }`}
-          >
-            <span className="sr-only">{agent.team}</span>
-          </div>
-        )}
+            className={`size-6 shrink-0 rounded-full ${avatarSwatchClass(agent.avatarId)}`}
+          />
+        </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-neutral-900">{title}</div>
+          <div className="text-sm font-semibold text-neutral-900">{displayTitle}</div>
           <div className="text-xs text-neutral-500 mt-0.5 truncate">{subtitle}</div>
         </div>
         <div onClick={(e) => e.stopPropagation()}>
@@ -913,22 +1258,37 @@ function AgentCard({
         </div>
       </div>
 
-      {/* Bottom row: configuration link + more menu */}
-      <div className="flex items-center gap-4 px-5 py-3.5 border-t border-neutral-100 bg-neutral-50/40 rounded-b-xl">
-        <div className="flex-1 min-w-0 cursor-pointer" onClick={onOpen}>
+      {/* Bottom row: full-row hover highlights configuration; ⋯ excludes row click */}
+      <div
+        role="button"
+        tabIndex={0}
+        className="flex items-center px-5 py-2.5 border-t border-neutral-100 bg-white rounded-b-xl cursor-pointer outline-none transition-colors hover:bg-[rgba(236,236,237,0.6)] active:bg-[rgba(236,236,237,0.75)] focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+        onClick={(e) => {
+          if (e.target.closest("[data-agent-card-menu]")) return;
+          onOpen();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen();
+          }
+        }}
+      >
+        <div className="flex-1 min-w-0 py-2 pr-3">
           <div className="text-sm font-medium text-neutral-900">Configuration</div>
           <div className="text-xs text-neutral-500 mt-0.5">
-            Adjust dispatch logic and working hours for this team.
+            Adjust scope and assignment logic for this agent.
           </div>
         </div>
-        <div className="relative">
+        <div className="relative shrink-0 self-stretch flex items-center" data-agent-card-menu>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               setMenuOpen((o) => !o);
             }}
             onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
-            className="p-1.5 rounded-md text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100"
+            className="p-1.5 rounded-md text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80"
           >
             <MoreHorizontal size={16} />
           </button>
@@ -945,19 +1305,6 @@ function AgentCard({
                 <Pencil size={13} className="text-neutral-500" />
                 Edit
               </button>
-              {!isRoute && (
-                <button
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    onDuplicate();
-                    setMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-sm text-neutral-800 hover:bg-neutral-50 flex items-center gap-2"
-                >
-                  <Copy size={13} className="text-neutral-500" />
-                  Duplicate
-                </button>
-              )}
               <div className="my-1 border-t border-neutral-100" />
               <button
                 onMouseDown={(e) => {
@@ -983,7 +1330,6 @@ function AgentListPage({
   onCreate,
   onOpenAgent,
   onDeleteAgent,
-  onDuplicateAgent,
   onToggleActive,
 }) {
   const isEmpty = agents.length === 0;
@@ -996,7 +1342,7 @@ function AgentListPage({
   });
 
   return (
-    <main className="flex-1 bg-gradient-to-b from-white via-white to-emerald-50/40 min-h-screen">
+    <main className="flex-1 bg-[#FAF9F6] min-h-screen">
       <header className="px-8 py-4 border-b border-neutral-200 bg-white">
         <h1 className="text-lg font-semibold text-neutral-900">Assistive AI</h1>
       </header>
@@ -1024,7 +1370,7 @@ function AgentListPage({
 
         <div className="border-t border-neutral-200 pt-8">
           {isEmpty ? (
-            <div className="border-2 border-dashed border-emerald-200 rounded-xl bg-emerald-50/30 py-14 px-6 flex flex-col items-center">
+            <div className="border-2 border-dashed border-emerald-200 rounded-xl bg-white py-14 px-6 flex flex-col items-center">
               <div className="text-base font-semibold text-neutral-900">
                 No dispatch agents configured
               </div>
@@ -1048,7 +1394,6 @@ function AgentListPage({
                   onOpen={() => onOpenAgent(agent.id)}
                   onEdit={() => onOpenAgent(agent.id)}
                   onDelete={() => onDeleteAgent(agent.id)}
-                  onDuplicate={() => onDuplicateAgent(agent.id)}
                   onToggleActive={onToggleActive}
                 />
               ))}
@@ -1057,88 +1402,6 @@ function AgentListPage({
         </div>
       </div>
     </main>
-  );
-}
-
-// =============================================================================
-// MODE SELECTION MODAL
-// =============================================================================
-
-function ModeModal({ onPick, onClose, hasRouteAgent = false }) {
-  const allModes = [
-    {
-      id: "Route",
-      icon: Shuffle,
-      title: "Route",
-      description: "Read incoming tickets and send them to the right team's board.",
-    },
-    {
-      id: "Assign",
-      icon: UserPlus,
-      title: "Assign",
-      description: "Route tickets and assign them to the right technician.",
-    },
-    {
-      id: "Assign + Schedule",
-      icon: CalendarClock,
-      title: "Assign + Schedule",
-      description: "Route, assign, and schedule tickets on a technician's calendar.",
-    },
-  ];
-
-  const modes = hasRouteAgent ? allModes.filter((m) => m.id !== "Route") : allModes;
-  const tierByMode = { Route: 1, Assign: 2, "Assign + Schedule": 3 };
-
-  return (
-    <div
-      className="fixed inset-0 bg-neutral-900/30 backdrop-blur-sm flex items-center justify-center z-50 p-6"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-6 py-5 border-b border-neutral-100">
-          <h2 className="text-base font-semibold text-neutral-900">Create a dispatch agent</h2>
-          <p className="text-sm text-neutral-500 mt-1">
-            Choose how much of the dispatching work the agent should take on.
-          </p>
-        </div>
-        <div className="p-4 space-y-2">
-          {modes.map((m) => {
-            const Icon = m.icon;
-            return (
-              <button
-                key={m.id}
-                onClick={() => onPick(m.id)}
-                className="w-full text-left flex items-start gap-4 p-4 rounded-lg border border-neutral-200 hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors group"
-              >
-                <div className="w-9 h-9 rounded-md bg-emerald-50 group-hover:bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
-                  <Icon size={18} className="text-emerald-600" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-neutral-900">{m.title}</span>
-                    <span className="text-[10px] font-medium tracking-wider text-neutral-400 uppercase">
-                      Tier {tierByMode[m.id]}
-                    </span>
-                  </div>
-                  <p className="text-sm text-neutral-500 mt-0.5 leading-snug">{m.description}</p>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-        <div className="px-6 py-4 border-t border-neutral-100 flex justify-end">
-          <button
-            onClick={onClose}
-            className="text-sm text-neutral-600 hover:text-neutral-900 px-3 py-1.5"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1155,15 +1418,44 @@ function ConfigPage({
   onSave,
 }) {
   const isRoute = mode === "Route";
-  const isAssign = mode === "Assign";
   const isSchedule = mode === "Assign + Schedule";
+
+  const defaultNewAgentTitle = isRoute ? "New routing agent" : `New ${mode.toLowerCase()} agent`;
+
+  // --- Agent identity
+  const [agentDisplayName, setAgentDisplayName] = useState(initialAgent?.name ?? "");
+  const [avatarId, setAvatarId] = useState(initialAgent?.avatarId ?? "avatar-1");
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const avatarPickerWrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!avatarPickerOpen) return undefined;
+    const handler = (e) => {
+      if (avatarPickerWrapRef.current?.contains(e.target)) return;
+      setAvatarPickerOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [avatarPickerOpen]);
 
   // --- Agent scope
   const [active, setActive] = useState(initialAgent?.active ?? true);
-  const [team, setTeam] = useState(initialAgent?.team ?? null);
-  const [board, setBoard] = useState(initialAgent?.board ?? "");
+  const [teams, setTeams] = useState(
+    normalizeSelections(initialAgent?.teams ?? initialAgent?.team)
+  );
+  const [boards, setBoards] = useState(
+    normalizeSelections(initialAgent?.boards ?? initialAgent?.board)
+  );
   const [statusMode, setStatusMode] = useState("Include only");
   const [statuses, setStatuses] = useState(initialAgent?.statuses ?? []);
+  const [excludeTechs, setExcludeTechs] = useState(initialAgent?.excludeTechs ?? []);
+  const [excludeTechsEnabled, setExcludeTechsEnabled] = useState(
+    initialAgent?.excludeTechsEnabled ??
+      Boolean((initialAgent?.excludeTechs ?? []).length > 0)
+  );
+  const [skipFlowAssignedTickets, setSkipFlowAssignedTickets] = useState(
+    initialAgent?.skipFlowAssignedTickets ?? false
+  );
 
   // --- Working hours (Assign + Schedule)
   const [startTime, setStartTime] = useState("8:00 AM");
@@ -1175,10 +1467,27 @@ function ConfigPage({
   const [duration, setDuration] = useState("30 min");
 
   // --- Assignment logic (Assign + Assign+Schedule)
+  const [assignMode] = useState(initialAgent?.assignMode ?? "Push");
   const [priority, setPriority] = useState("Highest first");
-  const [ticketAge, setTicketAge] = useState("Oldest first");
-  const [techSelection, setTechSelection] = useState("Most open time");
-  const [maxActiveTickets, setMaxActiveTickets] = useState(15);
+  const [techSelection, setTechSelection] = useState("Least active threads assigned");
+  const [maxAssignedThreads, setMaxAssignedThreads] = useState("No limit");
+  const [fallbackStatus, setFallbackStatus] = useState(
+    STATUSES.find((s) => s.toUpperCase() === "NEW") || STATUSES[0]
+  );
+
+  const MAX_ASSIGNED_THREADS_OPTIONS = [
+    "No limit",
+    "5",
+    "10",
+    "15",
+    "20",
+    "25",
+    "30",
+    "35",
+    "40",
+    "45",
+    "50",
+  ];
 
   // --- Agent autonomy (Assign + Assign+Schedule)
   const [limitWorkload, setLimitWorkload] = useState(false);
@@ -1295,64 +1604,74 @@ function ConfigPage({
   // Relax this rule when we later support shared boards via company/tsi filters.
   // ---------------------------------------------------------------------------
   const otherAgents = agents.filter((a) => a.id !== editingAgentId);
+  const assignmentAgents = otherAgents.filter(
+    (a) => a.mode === "Assign" || a.mode === "Assign + Schedule"
+  );
 
-  const teamsWithAssignment = new Map();
-  otherAgents
-    .filter((a) => a.mode === "Assign" || a.mode === "Assign + Schedule")
-    .forEach((a) => teamsWithAssignment.set(a.team, { mode: a.mode, name: a.name }));
+  const claimedTeams = new Map();
+  const claimedBoards = new Map();
+  assignmentAgents.forEach((a) => {
+    normalizeSelections(a.teams ?? a.team).forEach((t) =>
+      claimedTeams.set(t, a.name || "another agent")
+    );
+    normalizeSelections(a.boards ?? a.board).forEach((b) =>
+      claimedBoards.set(b, a.name || "another agent")
+    );
+  });
 
-  let teamError = null;
-  if (team && !isRoute) {
-    const clash = teamsWithAssignment.get(team);
-    if (clash) {
-      if (clash.mode === mode) {
-        teamError = `${team} already has an ${mode} agent ("${clash.name}"). Edit that agent instead.`;
-      } else {
-        teamError = `${team} already has an ${clash.mode} agent ("${clash.name}"). A team can only have one of Assign or Assign + Schedule.`;
-      }
-    }
-  }
+  const teamClaimedByAgent = Object.fromEntries(claimedTeams);
+  const boardClaimedByAgent = Object.fromEntries(claimedBoards);
 
   const ruleErrors = {};
   if (isRoute) {
     rules.forEach((rule) => {
       if (!rule.board) return;
-      if (rule.board === board) {
+      if (boards.includes(rule.board)) {
         ruleErrors[rule.id] = "Can't route to the same board you're routing from.";
       }
     });
   }
 
-  const hasErrors = !!teamError || Object.keys(ruleErrors).length > 0;
-  const missingRequired = !board || (!isRoute && !team);
+  const hasErrors = Object.keys(ruleErrors).length > 0;
+  const missingRequired =
+    boards.length === 0 || (!isRoute && teams.length === 0) || !agentDisplayName.trim();
   const canSave = !hasErrors && !missingRequired;
 
-  const handleSaveClick = () => {
-    const derivedName = initialAgent?.name
-      ? initialAgent.name
-      : isRoute
-      ? `Routing agent · ${board}`
-      : `${mode} · ${team} · ${board}`;
+  const availableMembers = useMemo(() => {
+    const members = teams.flatMap((teamName) => TEAM_MEMBERS[teamName] || []);
+    return [...new Set(members)];
+  }, [teams]);
 
+  useEffect(() => {
+    setExcludeTechs((prev) => prev.filter((name) => availableMembers.includes(name)));
+  }, [availableMembers]);
+
+  const handleSaveClick = () => {
     onSave({
-      name: derivedName,
+      name: agentDisplayName.trim(),
+      avatarId,
       mode,
-      board,
-      team: isRoute ? null : team,
+      board: boards[0] || "",
+      boards,
+      team: isRoute ? null : teams[0] || null,
+      teams: isRoute ? [] : teams,
+      assignMode,
+      excludeTechs: excludeTechsEnabled ? excludeTechs : [],
+      excludeTechsEnabled,
+      skipFlowAssignedTickets,
       destinations: isRoute ? rules.map((r) => r.board).filter(Boolean) : [],
       routeRules: isRoute ? rules : undefined,
+      statuses,
       active,
     });
   };
 
-  const headerTitle = initialAgent
-    ? initialAgent.name
-    : isRoute
-    ? "New routing agent"
-    : `New ${mode.toLowerCase()} agent`;
+  const headerTitle =
+    agentDisplayName.trim() ||
+    (initialAgent?.name ?? defaultNewAgentTitle);
 
   return (
-    <main className="flex-1 bg-gradient-to-b from-white via-white to-blue-50/30 min-h-screen">
+    <main className="flex-1 bg-[#FAF9F6] min-h-screen">
       <header className="px-6 py-3.5 border-b border-neutral-200 bg-white flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <button
@@ -1370,6 +1689,75 @@ function ConfigPage({
 
       <div className="max-w-3xl mx-auto px-8 py-10">
 
+        <Section title="Agent identity">
+          <Row
+            label="Name your agent"
+            subcopy="You can always change this in settings later"
+          >
+            <input
+              type="text"
+              value={agentDisplayName}
+              onChange={(e) => setAgentDisplayName(e.target.value)}
+              placeholder="e.g Team Red Dispatcher"
+              className="min-w-[240px] max-w-xs rounded-md border border-neutral-200 px-3 py-1.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            />
+          </Row>
+          <Row
+            label="Agent's avatar"
+            subcopy="To help set your agents apart"
+            noBorder
+          >
+            <div className="relative" ref={avatarPickerWrapRef}>
+              <button
+                type="button"
+                onClick={() => setAvatarPickerOpen((o) => !o)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white p-0.5 transition-colors hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                aria-expanded={avatarPickerOpen}
+                aria-haspopup="listbox"
+                aria-label="Choose agent avatar"
+              >
+                <span
+                  className={`h-6 w-6 shrink-0 rounded-full ${avatarSwatchClass(avatarId)}`}
+                  aria-hidden
+                />
+              </button>
+              {avatarPickerOpen ? (
+                <div
+                  role="listbox"
+                  className="absolute right-0 z-30 mt-2 w-[200px] rounded-lg border border-neutral-200 bg-white p-2 shadow-lg"
+                >
+                  <div className="grid grid-cols-3 gap-2">
+                    {AGENT_AVATAR_PRESETS.map((preset) => {
+                      const picked = preset.id === avatarId;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          role="option"
+                          aria-selected={picked}
+                          onClick={() => {
+                            setAvatarId(preset.id);
+                            setAvatarPickerOpen(false);
+                          }}
+                          className={`flex h-14 w-full items-center justify-center rounded-md border p-1.5 transition-colors ${
+                            picked
+                              ? "border-emerald-500 ring-2 ring-emerald-500/25"
+                              : "border-neutral-200 hover:border-neutral-300"
+                          }`}
+                        >
+                          <span
+                            className={`h-10 w-10 rounded-full ${preset.swatch}`}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </Row>
+        </Section>
+
         {/* Agent scope */}
         <Section
           title="Agent scope"
@@ -1381,19 +1769,49 @@ function ConfigPage({
         >
           {!isRoute && (
             <Row label="Team" subcopy="Select the team tickets will be dispatched to.">
-              <Select
-                value={team}
+              <MultiSelect
+                values={teams}
                 options={TEAMS}
-                onChange={setTeam}
-                placeholder="Select team"
-                className={teamError ? "ring-2 ring-red-200 rounded-md" : ""}
+                onChange={setTeams}
+                placeholder="Select teams"
+                searchable
+                searchPlaceholder="Search teams..."
+                dropdownClassName="w-[320px]"
+                disabledClaims={teamClaimedByAgent}
               />
-              {teamError && (
-                <div className="text-xs text-red-600 text-right max-w-xs leading-snug mt-1">
-                  {teamError}
-                </div>
-              )}
             </Row>
+          )}
+          {!isRoute && (
+            <div className="border-b border-neutral-100">
+              <div className="flex items-center justify-between gap-6 px-5 py-4">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-neutral-900">
+                    Exclude techs
+                  </div>
+                  <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                    Selected members won&apos;t receive tickets from this agent.
+                  </p>
+                </div>
+                <div className="shrink-0" onMouseDown={(e) => e.stopPropagation()}>
+                  <Toggle
+                    checked={excludeTechsEnabled}
+                    onChange={setExcludeTechsEnabled}
+                    size="sm"
+                  />
+                </div>
+              </div>
+              {excludeTechsEnabled ? (
+                <div className="px-5 pb-4">
+                  <ExcludeTechsCombo
+                    values={excludeTechs}
+                    onChange={setExcludeTechs}
+                    options={availableMembers}
+                    disabled={teams.length === 0}
+                    disabledMessage="Select teams first"
+                  />
+                </div>
+              ) : null}
+            </div>
           )}
           <Row
             label="Dispatch from"
@@ -1403,20 +1821,20 @@ function ConfigPage({
                 : "Select the board to dispatch tickets from."
             }
           >
-            <Select
-              value={board}
+            <MultiSelect
+              values={boards}
               options={BOARDS}
-              onChange={setBoard}
-              placeholder="Select board"
+              onChange={setBoards}
+              placeholder="Select boards"
               searchable
               searchPlaceholder="Search boards..."
-              dropdownClassName="w-[280px] max-h-[30rem]"
+              dropdownClassName="w-[320px] max-h-[30rem]"
+              disabledClaims={boardClaimedByAgent}
             />
           </Row>
           <Row
             label="Status"
             subcopy="Select the statuses the agent should focus on. Statuses excluded from this list won't count toward the agent's workload."
-            noBorder
           >
             <div className="flex items-center gap-2">
               <Select
@@ -1436,6 +1854,20 @@ function ConfigPage({
               />
             </div>
           </Row>
+          {!isRoute && (
+            <Row
+              label="Skip tickets assigned by Flows"
+              subcopy="When enabled, the agent will skip tickets that are already handled by a Flow with an assign action."
+              noBorder
+              align="center"
+            >
+              <Toggle
+                checked={skipFlowAssignedTickets}
+                onChange={setSkipFlowAssignedTickets}
+                size="sm"
+              />
+            </Row>
+          )}
         </Section>
 
         {/* Route mode: rules */}
@@ -1458,7 +1890,7 @@ function ConfigPage({
               {rules.map((rule) => {
                 const availableBoards = BOARDS.filter(
                   (b) =>
-                    b !== board &&
+                    !boards.includes(b) &&
                     (b === rule.board ||
                       !rules.some((r) => r.id !== rule.id && r.board === b))
                 );
@@ -1470,7 +1902,7 @@ function ConfigPage({
                       error ? "border-red-300" : "border-neutral-200"
                     }`}
                   >
-                    <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 bg-neutral-50/50 rounded-t-lg">
+                    <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 bg-white rounded-t-lg">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm text-neutral-700">
                           Dispatch to
@@ -1633,6 +2065,18 @@ function ConfigPage({
                 : "Define how the agent picks the right tech."
             }
           >
+            {assignMode === "Push" && (
+              <Row
+                label="Tech selection"
+                subcopy="How the agent determines which technician to assign work to."
+              >
+                <Select
+                  value={techSelection}
+                  options={["Least active threads assigned", "Round robin"]}
+                  onChange={setTechSelection}
+                />
+              </Row>
+            )}
             <Row label="Priority" subcopy="Assign tickets in order of priority.">
               <Select
                 value={priority}
@@ -1641,44 +2085,28 @@ function ConfigPage({
               />
             </Row>
             <Row
-              label="Ticket age"
-              subcopy="Prioritize tickets that have been waiting the longest."
+              label="Max assigned threads"
+              subcopy="Set a maximum number of active threads a tech can have."
             >
               <Select
-                value={ticketAge}
-                options={["Oldest first", "Newest first"]}
-                onChange={setTicketAge}
+                value={maxAssignedThreads}
+                options={MAX_ASSIGNED_THREADS_OPTIONS}
+                onChange={setMaxAssignedThreads}
               />
             </Row>
             <Row
-              label="Tech selection"
-              subcopy="How the agent determines which technician to assign work to."
+              label="Fallback status"
+              subcopy="The status set if no tech is available."
             >
               <Select
-                value={techSelection}
-                options={["Most open time", "Fewest tickets assigned", "Round robin"]}
-                onChange={setTechSelection}
+                value={fallbackStatus}
+                options={STATUSES}
+                onChange={setFallbackStatus}
+                searchable
+                searchPlaceholder="Search statuses..."
+                dropdownClassName="w-[280px]"
               />
             </Row>
-            {isAssign && (
-              <Row
-                label="Max active tickets per tech"
-                subcopy="Once a tech reaches this number of active tickets, the agent will skip them and pick another tech with capacity."
-              >
-                <input
-                  type="number"
-                  min={1}
-                  value={maxActiveTickets}
-                  onChange={(e) => {
-                    const parsed = Number(e.target.value);
-                    setMaxActiveTickets(
-                      Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1
-                    );
-                  }}
-                  className="w-24 px-3 py-1.5 bg-white border border-neutral-200 rounded-md text-sm text-neutral-800 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                />
-              </Row>
-            )}
             <Row
               label="SLA risk"
               subcopy="Prioritize tickets closest to breaching their SLA first."
@@ -1701,17 +2129,18 @@ function ConfigPage({
           </Section>
         )}
 
-        {/* Agent autonomy — all modes */}
+        {/* Auto-assign limit — all modes */}
         <Section
-          title="Agent autonomy"
-          subcopy="Control how much of the dispatching work the agent handles automatically."
+          title="Auto-assign limit"
+          subcopy="When enabled, you can set assignment limits for threads."
         >
             <Row
-              label="Limit agent workload"
-              subcopy="When enabled, the agent will only handle a percentage of incoming tickets. The rest stay unassigned for manual review."
+              label="Limit auto-assignment"
+              subcopy="When this is off, all threads in the status(es) you specified will be automatically assigned."
               noBorder={!limitWorkload}
+              align="center"
             >
-              <Toggle checked={limitWorkload} onChange={setLimitWorkload} />
+              <Toggle checked={limitWorkload} onChange={setLimitWorkload} size="sm" />
             </Row>
             {limitWorkload && (
               <Row
@@ -1773,16 +2202,18 @@ function ConfigPage({
 // ROOT
 // =============================================================================
 
+/** New agents from "Create agent" open in config without a mode picker. */
+const DEFAULT_NEW_AGENT_MODE = "Assign";
+
 export default function App() {
+  const [section, setSection] = useState("Auto-dispatch"); // "Auto-dispatch" | "Flows"
   const [view, setView] = useState("list"); // "list" | "config"
   const [mode, setMode] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
   const [agents, setAgents] = useState([]);
   const [editingAgentId, setEditingAgentId] = useState(null);
 
-  const handlePickMode = (m) => {
-    setMode(m);
-    setModalOpen(false);
+  const handleCreateAgent = () => {
+    setMode(DEFAULT_NEW_AGENT_MODE);
     setEditingAgentId(null);
     setView("config");
   };
@@ -1811,25 +2242,6 @@ export default function App() {
     setAgents((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const handleDuplicateAgent = (id) => {
-    const source = agents.find((a) => a.id === id);
-    if (!source) return;
-
-    // Drop the user into a blank-scope copy so they can pick new team/board
-    const duplicate = {
-      ...source,
-      id: Date.now(),
-      name: `${source.name} (copy)`,
-      team: null,
-      board: "",
-      active: false,
-    };
-    setAgents((prev) => [...prev, duplicate]);
-    setMode(source.mode);
-    setEditingAgentId(duplicate.id);
-    setView("config");
-  };
-
   const handleToggleActive = (id) => {
     setAgents((prev) =>
       prev.map((a) => (a.id === id ? { ...a, active: !a.active } : a))
@@ -1841,47 +2253,49 @@ export default function App() {
     : null;
 
   return (
-    <div
-      className="min-h-screen flex font-sans text-neutral-900 bg-neutral-50"
-      style={{
-        fontFamily:
-          "'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif",
-      }}
-    >
-      <Sidebar />
+    <TooltipProvider delayDuration={300}>
+      <div
+        className="min-h-screen flex font-sans text-neutral-900 bg-[#FAF9F6]"
+        style={{
+          fontFamily:
+            "'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif",
+        }}
+      >
+        <Sidebar active={section} onSelect={setSection} />
 
-      {view === "list" && (
-        <AgentListPage
-          agents={agents}
-          onCreate={() => setModalOpen(true)}
-          onOpenAgent={handleOpenAgent}
-          onDeleteAgent={handleDeleteAgent}
-          onDuplicateAgent={handleDuplicateAgent}
-          onToggleActive={handleToggleActive}
-        />
+      {section === "Auto-dispatch" && (
+        <>
+          {view === "list" && (
+            <AgentListPage
+              agents={agents}
+              onCreate={handleCreateAgent}
+              onOpenAgent={handleOpenAgent}
+              onDeleteAgent={handleDeleteAgent}
+              onToggleActive={handleToggleActive}
+            />
+          )}
+
+          {view === "config" && mode && (
+            <ConfigPage
+              mode={mode}
+              agents={agents}
+              editingAgentId={editingAgentId}
+              initialAgent={editingAgent}
+              onBack={() => {
+                setView("list");
+                setEditingAgentId(null);
+              }}
+              onSave={handleSave}
+            />
+          )}
+
+        </>
       )}
 
-      {view === "config" && mode && (
-        <ConfigPage
-          mode={mode}
-          agents={agents}
-          editingAgentId={editingAgentId}
-          initialAgent={editingAgent}
-          onBack={() => {
-            setView("list");
-            setEditingAgentId(null);
-          }}
-          onSave={handleSave}
-        />
-      )}
-
-      {modalOpen && (
-        <ModeModal
-          onPick={handlePickMode}
-          onClose={() => setModalOpen(false)}
-          hasRouteAgent={agents.some((a) => a.mode === "Route")}
-        />
-      )}
-    </div>
+        {section === "Flows" && (
+          <FlowsPage onBack={() => setSection("Auto-dispatch")} />
+        )}
+      </div>
+    </TooltipProvider>
   );
 }

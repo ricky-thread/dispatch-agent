@@ -1110,6 +1110,7 @@ function Sidebar({ active = "Auto-dispatch", onSelect }) {
       label: "Magic AI",
       items: [
         { icon: Sparkles, label: "Assistive AI" },
+        { icon: LayoutGrid, label: "Auto-dispatch" },
         { icon: Wand2, label: "Magic Agents" },
         { icon: Target, label: "Intelligence" },
       ],
@@ -1119,7 +1120,6 @@ function Sidebar({ active = "Auto-dispatch", onSelect }) {
       items: [
         { icon: Workflow, label: "Status automation" },
         { icon: CheckSquare, label: "Flows" },
-        { icon: LayoutGrid, label: "Auto-dispatch" },
       ],
     },
     {

@@ -11,6 +11,8 @@
   --color-emerald-500: #00bb99;
   --color-emerald-600: #009c82;
   --color-emerald-700: #007d69;
+  /** Muted body / subtitle gray (replacing default neutral-500). */
+  --color-neutral-500: #605f68;
 }
 
 @layer base {

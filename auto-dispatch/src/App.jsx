@@ -1354,8 +1354,7 @@ function AgentListPage({
           </div>
           <h2 className="text-xl font-semibold text-neutral-900">Auto-dispatch</h2>
           <p className="text-sm text-neutral-500 mt-2 max-w-lg leading-relaxed">
-            Auto-dispatch works like a dispatcher on your team — it picks up new tickets and
-            assigns them to the right tech based on availability, workload, and priority.
+            Automatically assign incoming tickets to the right person on each team.
           </p>
           {!isEmpty && (
             <button
@@ -1370,12 +1369,12 @@ function AgentListPage({
 
         <div className="border-t border-neutral-200 pt-8">
           {isEmpty ? (
-            <div className="border-2 border-dashed border-emerald-200 rounded-xl bg-white py-14 px-6 flex flex-col items-center">
-              <div className="text-base font-semibold text-neutral-900">
-                No dispatch agents configured
+            <div className="border border-dashed border-[#00BB99] rounded-xl bg-transparent py-14 px-6 flex flex-col items-center">
+              <div className="text-[14px] font-semibold text-neutral-900">
+                Configure your first dispatch agent
               </div>
               <p className="text-sm text-neutral-500 mt-1.5 mb-6 max-w-sm text-center">
-                Set up your first agent and let it handle ticket routing automatically.
+                Create an agent to start automatically assigning tickets to your team.
               </p>
               <button
                 onClick={onCreate}

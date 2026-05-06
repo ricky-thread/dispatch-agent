@@ -1,0 +1,1257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280" />
+<title>Test flow — Thread</title>
+<style>
+  :root {
+    --teal: #0BA47D;
+    --teal-dark: #099268;
+    --teal-bg: #E6F7F2;
+    --teal-bg-soft: #F2FAF5;
+    --canvas: #FAF9F6;
+    --border: #E5E7EB;
+    --border-soft: #EEF0F3;
+    --text: #1F2937;
+    --text-muted: #6B7280;
+    --text-faint: #9CA3AF;
+    --danger: #E5564E;
+    --danger-soft: #FEEDEC;
+    --white: #FFFFFF;
+    --radius: 8px;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--white);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button { font-family: inherit; cursor: pointer; }
+  input, select, textarea { font-family: inherit; font-size: 14px; color: var(--text); }
+  a { color: inherit; }
+
+  .app {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    height: 100vh;
+    min-width: 1180px;
+  }
+
+  /* ---------------- Sidebar ---------------- */
+  .sidebar {
+    background: var(--white);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+  }
+  .sidebar-logo {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .sidebar-logo .brand {
+    font-family: Georgia, "Times New Roman", serif;
+    font-style: italic;
+    font-weight: 700;
+    color: var(--teal);
+    font-size: 22px;
+    letter-spacing: 0.5px;
+  }
+  .sidebar-logo .brand sup {
+    font-size: 9px;
+    vertical-align: super;
+    margin-left: 1px;
+  }
+  .sidebar-logo .workspace {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .chev-down {
+    color: var(--text-faint);
+  }
+
+  .nav {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 8px 12px;
+  }
+  .nav::-webkit-scrollbar { width: 8px; }
+  .nav::-webkit-scrollbar-thumb { background: #E0E3E7; border-radius: 4px; }
+
+  .section-label {
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    padding: 14px 10px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .section-label .plus {
+    width: 16px; height: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-faint);
+    border-radius: 4px;
+  }
+  .section-label .plus:hover { background: var(--border-soft); color: var(--text-muted); }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13.5px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .nav-item:hover { background: #F4F6F8; }
+  .nav-item.active {
+    background: var(--teal-bg);
+    color: var(--teal);
+    font-weight: 600;
+  }
+  .nav-item.active svg { color: var(--teal); }
+  .nav-item svg { color: var(--text-muted); flex-shrink: 0; }
+  .nav-item .label { flex: 1; }
+
+  .team-emoji {
+    width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+
+  .sidebar-footer {
+    border-top: 1px solid var(--border-soft);
+    padding: 10px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .sidebar-footer .item {
+    display: inline-flex; align-items: center; gap: 6px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+  }
+  .sidebar-footer .item:hover { background: var(--border-soft); }
+
+  /* ---------------- Main column ---------------- */
+  .main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--canvas);
+  }
+
+  .topbar {
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .topbar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .back-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+  }
+  .back-btn:hover { background: var(--border-soft); color: var(--text); }
+  .flow-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0;
+  }
+  .topbar-spacer { flex: 1; }
+
+  /* ON/OFF toggle */
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    background: var(--teal);
+    color: var(--white);
+    border-radius: 999px;
+    padding: 3px 4px 3px 12px;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.04);
+  }
+  .toggle .knob {
+    width: 18px; height: 18px;
+    background: var(--white);
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  }
+  .toggle.off {
+    background: #D1D5DB;
+    color: #6B7280;
+    flex-direction: row-reverse;
+    padding: 3px 12px 3px 4px;
+  }
+
+  .save-btn {
+    background: #DDE1E6;
+    color: #8C95A1;
+    border: none;
+    padding: 7px 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: not-allowed;
+  }
+  .save-btn.enabled {
+    background: var(--teal);
+    color: var(--white);
+    cursor: pointer;
+  }
+
+  /* Segmented tabs */
+  .tabs-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 24px 0 8px;
+  }
+  .tabs {
+    display: inline-flex;
+    background: #F1EFEA;
+    border: 1px solid #ECEAE3;
+    border-radius: 12px;
+    padding: 5px;
+    gap: 2px;
+    position: relative;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  }
+  .tab {
+    border: none;
+    background: transparent;
+    padding: 8px 18px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    z-index: 1;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    color: var(--teal);
+    background: var(--white);
+    box-shadow:
+      0 1px 2px rgba(16, 24, 40, 0.06),
+      0 1px 3px rgba(16, 24, 40, 0.04),
+      inset 0 0 0 1px rgba(11, 164, 125, 0.18);
+  }
+  .tab:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: 2px;
+  }
+  .tab .badge {
+    background: linear-gradient(135deg, var(--teal), #14C28F);
+    color: var(--white);
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-weight: 700;
+    box-shadow: 0 1px 2px rgba(11, 164, 125, 0.35);
+  }
+  .tab .tab-icon {
+    color: currentColor;
+    opacity: 0.85;
+  }
+
+  /* ---------------- Canvas ---------------- */
+  .canvas {
+    flex: 1;
+    overflow-y: auto;
+    background-color: var(--canvas);
+    background-image:
+      radial-gradient(circle, #DED9CB 1px, transparent 1px);
+    background-size: 18px 18px;
+    background-position: 0 0;
+    padding: 0 28px 80px;
+  }
+
+  .flow-stack {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .stage-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin: 0 0 10px 4px;
+  }
+
+  .card {
+    background: var(--white);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    padding: 22px 22px 20px;
+    position: relative;
+  }
+  .card + .stage-label { margin-top: 4px; }
+
+  .card-trash {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: transparent;
+    border: none;
+    color: var(--danger);
+    padding: 4px;
+    border-radius: 4px;
+    display: inline-flex;
+  }
+  .card-trash:hover { background: var(--danger-soft); }
+
+  .arrow-down {
+    display: flex;
+    justify-content: center;
+    margin: 4px 0;
+    color: #B7C4BD;
+  }
+
+  /* Inputs */
+  .input,
+  .select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--white);
+    font-size: 14px;
+    color: var(--text);
+    appearance: none;
+  }
+  .select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+    cursor: pointer;
+  }
+  .input::placeholder, .select::placeholder { color: var(--text-faint); }
+  .input:focus, .select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px rgba(11, 164, 125, 0.12);
+  }
+
+  /* Filter rows */
+  .filter-row {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .filter-row .label { color: var(--text-muted); font-size: 13px; }
+  .filter-row .info-icon { margin-left: 6px; color: var(--text-faint); vertical-align: middle; }
+
+  .where-grid {
+    display: grid;
+    grid-template-columns: 1fr 60px 1fr 36px;
+    gap: 8px;
+    align-items: center;
+  }
+  .x-btn {
+    width: 36px; height: 36px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--text);
+    color: var(--white);
+    border: none;
+    border-radius: 6px;
+    font-size: 18px;
+  }
+  .x-btn:hover { background: #111827; }
+
+  .filter-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .pill-btn {
+    background: var(--teal);
+    color: var(--white);
+    border: none;
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .pill-btn:hover { background: var(--teal-dark); }
+
+  /* Channel card */
+  .channel-row {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 14px;
+    align-items: start;
+  }
+  .slack-icon {
+    width: 28px; height: 28px;
+    margin-top: 6px;
+  }
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    color: var(--text);
+    font-size: 13.5px;
+  }
+  .checkbox-row input[type="checkbox"] {
+    width: 16px; height: 16px;
+    accent-color: var(--teal);
+    border-radius: 4px;
+    margin: 0;
+  }
+  .help-icon {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #D1D5DB;
+    color: var(--white);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: help;
+  }
+
+  /* Action card */
+  .action-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .action-header .title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .action-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 14px;
+    overflow-x: auto;
+  }
+  .action-tab {
+    border: none;
+    background: transparent;
+    padding: 9px 14px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .action-tab:hover { color: var(--text); }
+  .action-tab.active {
+    color: var(--teal);
+    border-bottom-color: var(--teal);
+    font-weight: 600;
+  }
+
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 4px 4px 12px;
+  }
+  .breadcrumb .back {
+    background: transparent; border: none; color: var(--text-muted);
+    padding: 2px;
+    display: inline-flex;
+  }
+  .breadcrumb .back:hover { color: var(--text); }
+
+  .action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 6px;
+    border-bottom: 1px solid var(--border-soft);
+    cursor: pointer;
+    color: var(--text);
+    font-size: 14px;
+  }
+  .action-row:hover { background: #FAFBFC; }
+  .action-row:last-child { border-bottom: none; }
+  .action-row .check { color: var(--teal); }
+  .action-row .chev { color: var(--text-faint); }
+
+  /* ---------------- AI flows tab ---------------- */
+  .ai-hero {
+    max-width: 720px;
+    margin: 60px auto 0;
+    text-align: center;
+  }
+  .ai-hero h2 {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0 0 10px;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .ai-hero .sub {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 0 auto 28px;
+    max-width: 520px;
+    line-height: 1.5;
+  }
+  .ai-form {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 16px;
+    text-align: left;
+  }
+  .ai-form textarea {
+    width: 100%;
+    min-height: 120px;
+    border: none;
+    outline: none;
+    resize: vertical;
+    padding: 6px 6px 0;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--text);
+    background: transparent;
+  }
+  .ai-form textarea::placeholder { color: var(--text-faint); }
+  .ai-form-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .ai-form-foot .hint {
+    color: var(--text-faint);
+    font-size: 12px;
+  }
+  .generate-btn {
+    background: var(--teal);
+    color: var(--white);
+    border: none;
+    padding: 9px 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .generate-btn:hover { background: var(--teal-dark); }
+  .generate-btn:disabled {
+    background: #D1D5DB;
+    color: #8C95A1;
+    cursor: not-allowed;
+  }
+
+  .examples {
+    margin-top: 22px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+  .examples .label {
+    width: 100%;
+    color: var(--text-faint);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+  .example-chip {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    line-height: 1.3;
+    max-width: 320px;
+  }
+  .example-chip:hover {
+    border-color: var(--teal);
+    color: var(--teal);
+    background: var(--teal-bg-soft);
+  }
+
+  /* AI generating state */
+  .ai-generating {
+    max-width: 720px;
+    margin: 0 auto;
+    text-align: center;
+    padding: 80px 0;
+  }
+  .ai-prompt-echo {
+    max-width: 720px;
+    margin: 0 auto 24px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .ai-prompt-echo .text {
+    color: var(--text);
+    font-size: 13.5px;
+    line-height: 1.5;
+    flex: 1;
+    text-align: left;
+  }
+  .ai-prompt-echo .text .label {
+    display: block;
+    color: var(--text-faint);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .link-btn {
+    background: transparent;
+    border: none;
+    color: var(--teal);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 4px 0;
+  }
+  .link-btn:hover { text-decoration: underline; }
+
+  .spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--teal);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .ai-actions-bar {
+    max-width: 720px;
+    margin: 24px auto 0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .secondary-btn {
+    background: var(--white);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .secondary-btn:hover { border-color: var(--text-muted); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ============== Sidebar ============== -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <span class="brand">IPSUM<sup>®</sup></span>
+        <span class="workspace">Thread Stage Slack</span>
+      </div>
+      <svg class="chev-down" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <span class="label">Get started</span>
+      </div>
+
+      <div class="section-label">Magic AI</div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 L13.5 8.5 L20 10 L13.5 11.5 L12 18 L10.5 11.5 L4 10 L10.5 8.5 Z"/></svg>
+        <span class="label">Assistive AI</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="label">Magic Agents</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M21 12c0 4.97-4.03 9-9 9-4.97 0-9-4.03-9-9 0-4.97 4.03-9 9-9 4.97 0 9 4.03 9 9z"/></svg>
+        <span class="label">Intelligence</span>
+      </div>
+
+      <div class="section-label">Automation</div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <span class="label">Status Mapping</span>
+      </div>
+      <div class="nav-item active">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="label">Flows</span>
+      </div>
+
+      <div class="section-label">Communication</div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="label">Messenger</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        <span class="label">Voice</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="label">Clients</span>
+      </div>
+
+      <div class="section-label">General</div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span class="label">Workspace</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
+        <span class="label">Plans &amp; Licenses</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        <span class="label">Members</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        <span class="label">Integrations</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span class="label">Security Center</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="label">Analytics</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+        <span class="label">Reports</span>
+      </div>
+      <div class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.8 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg>
+        <span class="label">Feedback</span>
+      </div>
+
+      <div class="section-label">
+        Your Teams
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <span class="plus">＋</span>
+      </div>
+      <div class="nav-item"><span class="team-emoji">🐛</span><span class="label">Bugbashers</span></div>
+      <div class="nav-item"><span class="team-emoji">🧙</span><span class="label">magic</span></div>
+      <div class="nav-item"><span class="team-emoji">😍</span><span class="label">RD-QA</span></div>
+      <div class="nav-item"><span class="team-emoji">🚀</span><span class="label">Rocket</span></div>
+      <div class="nav-item"><span class="team-emoji">🚀</span><span class="label">Rocket</span></div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span class="item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+        Inbox
+      </span>
+      <span class="item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Help
+      </span>
+    </div>
+  </aside>
+
+  <!-- ============== Main ============== -->
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-row">
+        <button class="back-btn" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+        <h1 class="flow-title">Test flow</h1>
+        <div class="topbar-spacer"></div>
+        <button class="toggle" id="onToggle" aria-label="Flow on/off">
+          ON <span class="knob"></span>
+        </button>
+        <button class="save-btn" id="saveBtn">Save</button>
+      </div>
+    </div>
+
+    <div class="canvas">
+      <div class="tabs-wrap">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="classic" role="tab">
+            <svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            Classic flow
+          </button>
+          <button class="tab" data-tab="ai" role="tab">
+            <svg class="tab-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L13.2 8.8 L19 10 L13.2 11.2 L12 17 L10.8 11.2 L5 10 L10.8 8.8 Z"/><path d="M19 17 L19.6 19.4 L22 20 L19.6 20.6 L19 23 L18.4 20.6 L16 20 L18.4 19.4 Z"/></svg>
+            AI flows <span class="badge">NEW</span>
+          </button>
+        </div>
+      </div>
+
+
+      <!-- ============== Classic flow tab ============== -->
+      <section id="tab-classic" class="tab-panel">
+        <div class="flow-stack" id="classicStack">
+          <!-- Trigger card -->
+          <p class="stage-label">When a new</p>
+          <div class="card">
+            <select class="select">
+              <option>Ticket</option>
+              <option>Time entry</option>
+              <option>Note</option>
+            </select>
+          </div>
+
+          <div class="arrow-down">
+            <svg width="24" height="40" viewBox="0 0 24 40" fill="none" stroke="currentColor" stroke-width="1.5">
+              <line x1="12" y1="0" x2="12" y2="32"/>
+              <polyline points="6 26 12 32 18 26" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </div>
+
+          <!-- Apply filters card -->
+          <p class="stage-label">Apply filters</p>
+          <div class="card">
+            <div class="filter-row">
+              <span class="label">Time zone
+                <svg class="info-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              </span>
+              <select class="select"><option>Search...</option></select>
+            </div>
+            <div class="where-grid">
+              <span class="label" style="color:var(--text-muted);font-size:13px;">Where</span>
+              <select class="select"><option>Board</option></select>
+              <select class="select"><option>=</option><option>≠</option></select>
+              <select class="select"><option>Professional Services</option></select>
+              <button class="x-btn" aria-label="Remove rule">×</button>
+            </div>
+            <div class="where-grid" style="grid-template-columns: 80px 1fr; margin-top:0;"></div>
+            <div class="filter-actions">
+              <button class="pill-btn">+Rule</button>
+              <button class="pill-btn">+Group</button>
+            </div>
+          </div>
+
+          <div class="arrow-down">
+            <svg width="24" height="40" viewBox="0 0 24 40" fill="none" stroke="currentColor" stroke-width="1.5">
+              <line x1="12" y1="0" x2="12" y2="32"/>
+              <polyline points="6 26 12 32 18 26" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </div>
+
+          <!-- Channel card -->
+          <p class="stage-label">Channel</p>
+          <div class="card">
+            <button class="card-trash" aria-label="Remove">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+            <div class="channel-row">
+              <svg class="slack-icon" viewBox="0 0 124 124" xmlns="http://www.w3.org/2000/svg">
+                <path d="M26.4 78.5c0 7.2-5.9 13.1-13.1 13.1S.2 85.7.2 78.5s5.9-13.1 13.1-13.1h13.1zM33 78.5c0-7.2 5.9-13.1 13.1-13.1s13.1 5.9 13.1 13.1v32.8c0 7.2-5.9 13.1-13.1 13.1s-13.1-5.9-13.1-13.1z" fill="#E01E5A"/>
+                <path d="M46.1 26c-7.2 0-13.1-5.9-13.1-13.1S38.9-.2 46.1-.2 59.2 5.7 59.2 12.9V26zm0 6.6c7.2 0 13.1 5.9 13.1 13.1s-5.9 13.1-13.1 13.1H13.3C6.1 58.8.2 52.9.2 45.7s5.9-13.1 13.1-13.1z" fill="#36C5F0"/>
+                <path d="M98.6 45.7c0-7.2 5.9-13.1 13.1-13.1s13.1 5.9 13.1 13.1-5.9 13.1-13.1 13.1H98.6zM92 45.7c0 7.2-5.9 13.1-13.1 13.1s-13.1-5.9-13.1-13.1V12.9c0-7.2 5.9-13.1 13.1-13.1S92 5.7 92 12.9z" fill="#2EB67D"/>
+                <path d="M78.9 98.2c7.2 0 13.1 5.9 13.1 13.1s-5.9 13.1-13.1 13.1-13.1-5.9-13.1-13.1V98.2zm0-6.6c-7.2 0-13.1-5.9-13.1-13.1s5.9-13.1 13.1-13.1h32.8c7.2 0 13.1 5.9 13.1 13.1s-5.9 13.1-13.1 13.1z" fill="#ECB22E"/>
+              </svg>
+              <div>
+                <select class="select"><option value="" disabled selected>Start typing channel name</option><option>#vip-support</option><option>#prof-services</option></select>
+                <label class="checkbox-row">
+                  <input type="checkbox" />
+                  <span>Create a new channel for each ticket</span>
+                  <span class="help-icon">?</span>
+                </label>
+                <label class="checkbox-row">
+                  <input type="checkbox" />
+                  <span>Send note as a message in channel ticket</span>
+                  <span class="help-icon">?</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="arrow-down">
+            <svg width="24" height="40" viewBox="0 0 24 40" fill="none" stroke="currentColor" stroke-width="1.5">
+              <line x1="12" y1="0" x2="12" y2="32"/>
+              <polyline points="6 26 12 32 18 26" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </div>
+
+          <!-- Action card -->
+          <p class="stage-label" style="display:flex;align-items:center;gap:6px;">
+            Action
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </p>
+          <div class="card">
+            <button class="card-trash" aria-label="Remove">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+            <div class="action-tabs">
+              <button class="action-tab">Reply</button>
+              <button class="action-tab">Note</button>
+              <button class="action-tab">Priority</button>
+              <button class="action-tab">Assign</button>
+              <button class="action-tab">Status</button>
+              <button class="action-tab active">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                Actions
+              </button>
+            </div>
+            <div class="breadcrumb">
+              <button class="back" aria-label="Back">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              Magic / Auto Prioritize / <span style="color:var(--teal);font-weight:600;">Magic</span>
+            </div>
+            <div class="action-row">
+              <span>Auto Prioritize</span>
+              <svg class="check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="action-row">
+              <span>Auto Categorize</span>
+            </div>
+            <div class="action-row">
+              <span>Generate Title</span>
+            </div>
+            <div class="action-row">
+              <span>Generate Recap Template</span>
+              <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== AI flows tab ============== -->
+      <section id="tab-ai" class="tab-panel hidden">
+
+        <!-- Form state -->
+        <div class="ai-hero" id="aiForm">
+          <h2>Describe the flow you want to build</h2>
+          <p class="sub">Tell us in plain English what should happen when a ticket comes in. We'll build the flow for you — you can tweak it after.</p>
+
+          <div class="ai-form">
+            <textarea id="aiPrompt" placeholder="e.g., When a new high-priority ticket from a VIP client comes in on the Professional Services board, post it to #vip-support and auto-prioritize it…"></textarea>
+            <div class="ai-form-foot">
+              <span class="hint">Press ⌘ + Enter to generate</span>
+              <button class="generate-btn" id="generateBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Generate flow
+              </button>
+            </div>
+          </div>
+
+          <div class="examples">
+            <span class="label">Try one of these</span>
+            <button class="example-chip">Route VIP tickets to #vip-support and auto-prioritize them</button>
+            <button class="example-chip">Auto-categorize new tickets from the Professional Services board</button>
+            <button class="example-chip">When a ticket is unassigned for over an hour, ping the team lead</button>
+          </div>
+        </div>
+
+        <!-- Generating state -->
+        <div class="ai-generating hidden" id="aiGenerating">
+          <div class="spinner"></div>
+          <p style="color:var(--text-muted);font-size:14px;">Building your flow…</p>
+        </div>
+
+        <!-- Result state -->
+        <div class="hidden" id="aiResult">
+          <div class="ai-prompt-echo">
+            <div class="text">
+              <span class="label">Your prompt</span>
+              <span id="echoPrompt"></span>
+            </div>
+            <button class="link-btn" id="editPromptBtn">Edit prompt</button>
+          </div>
+
+          <div class="flow-stack" id="aiStack">
+            <!-- populated by JS, mirrors classic flow -->
+          </div>
+
+          <div class="ai-actions-bar">
+            <button class="secondary-btn" id="regenBtn">Regenerate</button>
+            <button class="generate-btn" id="saveAiBtn">Save flow</button>
+          </div>
+        </div>
+
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- Template: AI-generated flow stack -->
+<template id="aiFlowTemplate">
+  <p class="stage-label">When a new</p>
+  <div class="card">
+    <select class="select"><option>Ticket</option></select>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="24" height="40" viewBox="0 0 24 40" fill="none" stroke="currentColor" stroke-width="1.5">
+      <line x1="12" y1="0" x2="12" y2="32"/>
+      <polyline points="6 26 12 32 18 26" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+  </div>
+
+  <p class="stage-label">Apply filters</p>
+  <div class="card">
+    <div class="where-grid">
+      <span class="label" style="color:var(--text-muted);font-size:13px;">Where</span>
+      <select class="select"><option>Board</option></select>
+      <select class="select"><option>=</option></select>
+      <select class="select"><option>Professional Services</option></select>
+      <button class="x-btn" aria-label="Remove rule">×</button>
+    </div>
+    <div class="where-grid" style="margin-top:10px;">
+      <span class="label" style="color:var(--text-muted);font-size:13px;">And</span>
+      <select class="select"><option>Priority</option></select>
+      <select class="select"><option>=</option></select>
+      <select class="select"><option>High</option></select>
+      <button class="x-btn" aria-label="Remove rule">×</button>
+    </div>
+    <div class="filter-actions">
+      <button class="pill-btn">+Rule</button>
+      <button class="pill-btn">+Group</button>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="24" height="40" viewBox="0 0 24 40" fill="none" stroke="currentColor" stroke-width="1.5">
+      <line x1="12" y1="0" x2="12" y2="32"/>
+      <polyline points="6 26 12 32 18 26" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+  </div>
+
+  <p class="stage-label">Channel</p>
+  <div class="card">
+    <button class="card-trash" aria-label="Remove">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+    </button>
+    <div class="channel-row">
+      <svg class="slack-icon" viewBox="0 0 124 124" xmlns="http://www.w3.org/2000/svg">
+        <path d="M26.4 78.5c0 7.2-5.9 13.1-13.1 13.1S.2 85.7.2 78.5s5.9-13.1 13.1-13.1h13.1zM33 78.5c0-7.2 5.9-13.1 13.1-13.1s13.1 5.9 13.1 13.1v32.8c0 7.2-5.9 13.1-13.1 13.1s-13.1-5.9-13.1-13.1z" fill="#E01E5A"/>
+        <path d="M46.1 26c-7.2 0-13.1-5.9-13.1-13.1S38.9-.2 46.1-.2 59.2 5.7 59.2 12.9V26zm0 6.6c7.2 0 13.1 5.9 13.1 13.1s-5.9 13.1-13.1 13.1H13.3C6.1 58.8.2 52.9.2 45.7s5.9-13.1 13.1-13.1z" fill="#36C5F0"/>
+        <path d="M98.6 45.7c0-7.2 5.9-13.1 13.1-13.1s13.1 5.9 13.1 13.1-5.9 13.1-13.1 13.1H98.6zM92 45.7c0 7.2-5.9 13.1-13.1 13.1s-13.1-5.9-13.1-13.1V12.9c0-7.2 5.9-13.1 13.1-13.1S92 5.7 92 12.9z" fill="#2EB67D"/>
+        <path d="M78.9 98.2c7.2 0 13.1 5.9 13.1 13.1s-5.9 13.1-13.1 13.1-13.1-5.9-13.1-13.1V98.2zm0-6.6c-7.2 0-13.1-5.9-13.1-13.1s5.9-13.1 13.1-13.1h32.8c7.2 0 13.1 5.9 13.1 13.1s-5.9 13.1-13.1 13.1z" fill="#ECB22E"/>
+      </svg>
+      <div>
+        <select class="select"><option>#vip-support</option></select>
+        <label class="checkbox-row">
+          <input type="checkbox" checked />
+          <span>Send note as a message in channel ticket</span>
+          <span class="help-icon">?</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="24" height="40" viewBox="0 0 24 40" fill="none" stroke="currentColor" stroke-width="1.5">
+      <line x1="12" y1="0" x2="12" y2="32"/>
+      <polyline points="6 26 12 32 18 26" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+  </div>
+
+  <p class="stage-label" style="display:flex;align-items:center;gap:6px;">
+    Action
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  </p>
+  <div class="card">
+    <button class="card-trash" aria-label="Remove">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+    </button>
+    <div class="action-tabs">
+      <button class="action-tab">Reply</button>
+      <button class="action-tab">Note</button>
+      <button class="action-tab">Priority</button>
+      <button class="action-tab">Assign</button>
+      <button class="action-tab">Status</button>
+      <button class="action-tab active">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Actions
+      </button>
+    </div>
+    <div class="breadcrumb">
+      <button class="back" aria-label="Back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      Magic / Auto Prioritize / <span style="color:var(--teal);font-weight:600;">Magic</span>
+    </div>
+    <div class="action-row">
+      <span>Auto Prioritize</span>
+      <svg class="check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div class="action-row">
+      <span>Auto Categorize</span>
+    </div>
+    <div class="action-row">
+      <span>Generate Title</span>
+    </div>
+    <div class="action-row">
+      <span>Generate Recap Template</span>
+      <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+  </div>
+</template>
+
+<script>
+  // -------- Tabs --------
+  const tabs = document.querySelectorAll('.tab');
+  const panels = {
+    classic: document.getElementById('tab-classic'),
+    ai: document.getElementById('tab-ai'),
+  };
+  tabs.forEach(t => {
+    t.addEventListener('click', () => {
+      tabs.forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      const which = t.dataset.tab;
+      Object.entries(panels).forEach(([k, el]) => {
+        el.classList.toggle('hidden', k !== which);
+      });
+    });
+  });
+
+  // -------- ON/OFF toggle --------
+  const onToggle = document.getElementById('onToggle');
+  onToggle.addEventListener('click', () => {
+    const isOff = onToggle.classList.toggle('off');
+    onToggle.firstChild.textContent = isOff ? 'OFF ' : 'ON ';
+  });
+
+  // -------- Save button enable/disable demo --------
+  const saveBtn = document.getElementById('saveBtn');
+  saveBtn.addEventListener('click', (e) => {
+    if (saveBtn.classList.contains('enabled')) {
+      saveBtn.textContent = 'Saved ✓';
+      setTimeout(() => { saveBtn.textContent = 'Save'; saveBtn.classList.remove('enabled'); }, 1200);
+    }
+  });
+
+  // -------- AI flows --------
+  const aiForm = document.getElementById('aiForm');
+  const aiGenerating = document.getElementById('aiGenerating');
+  const aiResult = document.getElementById('aiResult');
+  const aiPrompt = document.getElementById('aiPrompt');
+  const generateBtn = document.getElementById('generateBtn');
+  const echoPrompt = document.getElementById('echoPrompt');
+  const aiStack = document.getElementById('aiStack');
+  const aiTemplate = document.getElementById('aiFlowTemplate');
+  const editPromptBtn = document.getElementById('editPromptBtn');
+  const regenBtn = document.getElementById('regenBtn');
+  const saveAiBtn = document.getElementById('saveAiBtn');
+
+  document.querySelectorAll('.example-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      aiPrompt.value = chip.textContent.trim();
+      aiPrompt.focus();
+    });
+  });
+
+  function generateFlow() {
+    const text = aiPrompt.value.trim();
+    if (!text) {
+      aiPrompt.focus();
+      return;
+    }
+    aiForm.classList.add('hidden');
+    aiResult.classList.add('hidden');
+    aiGenerating.classList.remove('hidden');
+
+    setTimeout(() => {
+      echoPrompt.textContent = text;
+      aiStack.innerHTML = '';
+      aiStack.appendChild(aiTemplate.content.cloneNode(true));
+      aiGenerating.classList.add('hidden');
+      aiResult.classList.remove('hidden');
+      saveBtn.classList.add('enabled');
+    }, 1500);
+  }
+
+  generateBtn.addEventListener('click', generateFlow);
+  aiPrompt.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') generateFlow();
+  });
+
+  editPromptBtn.addEventListener('click', () => {
+    aiResult.classList.add('hidden');
+    aiForm.classList.remove('hidden');
+    aiPrompt.focus();
+  });
+
+  regenBtn.addEventListener('click', generateFlow);
+
+  saveAiBtn.addEventListener('click', () => {
+    saveAiBtn.textContent = 'Saved ✓';
+    setTimeout(() => { saveAiBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Save flow'; }, 1500);
+  });
+</script>
+</body>
+</html>

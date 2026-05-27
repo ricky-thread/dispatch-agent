@@ -782,7 +782,7 @@ function ConfigPage({
           }
         >
           {!isRoute && (
-            <Row label="Team" subcopy="Select the team tickets will be dispatched to.">
+            <Row label="Inbox Team" subcopy="Select the team tickets will be dispatched to.">
               <Select
                 value={team}
                 options={TEAMS}
@@ -1066,14 +1066,14 @@ function ConfigPage({
               label="Skills match"
               subcopy="Match the ticket category to a technician's skillset."
             >
-              <ComingSoon />
+              <span className="text-sm text-neutral-400">TBD</span>
             </Row>
             <Row
               label="Client familiarity"
               subcopy="Favor technicians who have worked with this client before."
               noBorder
             >
-              <ComingSoon />
+              <span className="text-sm text-neutral-400">TBD</span>
             </Row>
           </Section>
         )}

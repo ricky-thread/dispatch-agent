@@ -23,12 +23,63 @@ export const BOARDS = [
 ];
 
 export const TEAMS = [
+  "Team Alpha",
+  "Team Beta",
+  "Team Charlie",
   "Team Red",
   "Team Blue",
   "Team Green",
   "Network Ops",
   "Procurement",
 ];
+
+/** Emoji shown beside inbox team labels (agent scope, test agent). */
+export const TEAM_META = {
+  "Team Alpha": { emoji: "🛡️" },
+  "Team Beta": { emoji: "⚔️" },
+  "Team Charlie": { emoji: "🎖️" },
+  "Team Red": { emoji: "🔴" },
+  "Team Blue": { emoji: "🔵" },
+  "Team Green": { emoji: "🟢" },
+  "Network Ops": { emoji: "⚙️" },
+  Procurement: { emoji: "📦" },
+};
+
+/** Inbox Team views (thread views) available per team for dispatch scope. */
+export const TEAM_VIEWS = {
+  "Team Alpha": [
+    "🧵 Needs dispatch view (Alpha)",
+    "🧵 Open tickets (Alpha)",
+  ],
+  "Team Beta": [
+    "🧵 Needs dispatch view (Beta)",
+    "🧵 Open tickets (Beta)",
+  ],
+  "Team Charlie": [
+    "🧵 Needs dispatch view (Alpha)",
+    "🧵 Open tickets (Charlie)",
+  ],
+  "Team Red": [
+    "🧵 Needs dispatch view (Red)",
+    "🧵 Open tickets (Red)",
+  ],
+  "Team Blue": [
+    "🧵 Needs dispatch view (Blue)",
+    "🧵 Open tickets (Blue)",
+  ],
+  "Team Green": [
+    "🧵 Needs dispatch view (Green)",
+    "🧵 Open tickets (Green)",
+  ],
+  "Network Ops": [
+    "🧵 Needs dispatch view (Network Ops)",
+    "🧵 Network queue",
+  ],
+  Procurement: [
+    "🧵 Needs dispatch view (Procurement)",
+    "🧵 Vendor requests",
+  ],
+};
 
 export const STATUSES = [
   ">CANCELLED",
@@ -289,7 +340,13 @@ function generateHourOptions() {
 export const HOUR_OPTIONS = generateHourOptions();
 
 // Color the team circle by team name (cosmetic only)
+/** Demo: views that share the same ticket pool across teams (overlap detection). */
+export const SHARED_TICKET_VIEWS = new Set(["🧵 Needs dispatch view (Alpha)"]);
+
 export const TEAM_COLORS = {
+  "Team Alpha": "bg-red-500",
+  "Team Beta": "bg-neutral-600",
+  "Team Charlie": "bg-orange-500",
   "Team Red": "bg-red-500",
   "Team Blue": "bg-blue-500",
   "Team Green": "bg-emerald-500",

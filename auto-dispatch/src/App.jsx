@@ -21,6 +21,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -59,6 +60,8 @@ import {
   LayoutGrid,
   Lock,
   MessageSquare,
+  ListOrdered,
+  Code2,
   MoreHorizontal,
   Package,
   Pencil,
@@ -73,6 +76,7 @@ import {
   Tag,
   Target,
   Trash2,
+  TriangleAlert,
   Users,
   Wallet,
   Wand2,
@@ -91,6 +95,33 @@ import {
 
 /** Status menus: default dropdown height + 200px */
 const STATUS_MENU_MAX_HEIGHT = "min(46.5rem, calc(100vh - 6rem))";
+
+const DEFAULT_ASSIGN_AGENT_INSTRUCTIONS = `Prioritize tickets in the following order:
+1. VIP contacts should always be ranked first, regardless of ticket priority or age.
+2. Tickets with unanswered customer replies should rank above tickets with no recent activity.
+3. Rank higher priority tickets above lower priority ones when contact type is equal.
+4. When priority and reply status are equal, older tickets rank first.
+
+Custom rules:
+- Tickets from managed services agreements should rank above break fix tickets of equal priority.`;
+
+function formatLastPublished(date) {
+  const month = date.toLocaleString("en-US", { month: "long" });
+  const day = date.getDate();
+  const time = date.toLocaleString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `Last published ${month} ${day} at ${time}`;
+}
+const CALENDAR_AVAILABILITY_OPTIONS = [
+  "Ignore",
+  "Today only",
+  "Today and tomorrow",
+  "Next 3 days",
+  "Next 7 days",
+];
 const SCOPE_TEAM_OPTIONS = ["Team Red", "Team Blue", "Team Green", "Network Ops", "Procurement"];
 const SCOPE_BOARD_OPTIONS = ["Help Desk", "Network", "Projects", "Voice"];
 const SCOPE_STATUS_OPTIONS = [
@@ -100,7 +131,14 @@ const SCOPE_STATUS_OPTIONS = [
   "On Hold",
   "Scheduled",
 ];
+const SCOPE_STATUS_FILTER = "Status";
+const SCOPE_STATUS_MODES = ["Include only", "Exclude"];
 const SCOPE_FILTER_METADATA = {
+  [SCOPE_STATUS_FILTER]: {
+    icon: Activity,
+    values: SCOPE_STATUS_OPTIONS,
+    isStatus: true,
+  },
   "Company type": {
     icon: Building2,
     values: ["Managed Service", "Break Fix", "Internal", "Government"],
@@ -167,12 +205,16 @@ function Select({
   searchable = false,
   searchPlaceholder = "Type to filter...",
   menuMaxHeight,
+  menuWidth,
   disabledClaims = {},
   disabled = false,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [menuPosition, setMenuPosition] = useState(null);
   const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
   const searchInputRef = useRef(null);
   const isEmpty = !value;
   const normalizedQuery = query.trim().toLowerCase();
@@ -180,15 +222,36 @@ function Select({
     ? options.filter((opt) => opt.toLowerCase().includes(normalizedQuery))
     : options;
 
+  const updateMenuPosition = () => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setMenuPosition({
+      top: rect.bottom + 4,
+      left: rect.left,
+      minWidth: rect.width,
+    });
+  };
+
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      setMenuPosition(null);
+      return undefined;
+    }
+    updateMenuPosition();
     const handleOutsideClick = (event) => {
-      if (rootRef.current && !rootRef.current.contains(event.target)) {
-        setOpen(false);
-      }
+      const target = event.target;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
+    const handleReposition = () => updateMenuPosition();
     document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -200,9 +263,76 @@ function Select({
     searchInputRef.current?.focus();
   }, [open, searchable]);
 
+  const dropdownMenu =
+    open && menuPosition ? (
+      <div
+        ref={menuRef}
+        className={`fixed bg-white border border-neutral-200 rounded-md shadow-lg py-1 z-[200] overflow-y-auto ${menuMaxHeight ? "" : "max-h-64"} ${dropdownClassName}`}
+        style={{
+          top: menuPosition.top,
+          left: menuPosition.left,
+          ...(menuWidth
+            ? { width: menuWidth }
+            : { minWidth: menuPosition.minWidth }),
+          ...(menuMaxHeight ? { maxHeight: menuMaxHeight } : undefined),
+        }}
+      >
+        {searchable && (
+          <div className="sticky top-0 bg-white px-2 pb-2 pt-1 border-b border-neutral-100">
+            <input
+              ref={searchInputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="w-full h-8 px-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+            />
+          </div>
+        )}
+        {filteredOptions.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-neutral-500">No matches found</div>
+        ) : (
+          filteredOptions.map((opt) => {
+            const usedByAgentName = disabledClaims?.[opt];
+            const optionDisabled = Boolean(usedByAgentName);
+            if (optionDisabled) {
+              return (
+                <TooltipProvider key={opt} delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-neutral-400 cursor-not-allowed whitespace-nowrap">
+                        <span className="min-w-0 flex-1 truncate">{opt}</span>
+                        <Lock size={13} className="shrink-0 text-neutral-400" strokeWidth={2} aria-hidden />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="text-xs">
+                      Used by {usedByAgentName}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            }
+            return (
+              <button
+                key={opt}
+                type="button"
+                onMouseDown={() => {
+                  onChange(opt);
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 text-sm text-neutral-800 hover:bg-neutral-50 whitespace-nowrap"
+              >
+                {opt}
+              </button>
+            );
+          })
+        )}
+      </div>
+    ) : null;
+
   return (
-    <div ref={rootRef} className={`relative ${className}`}>
+    <div ref={rootRef} className={`relative overflow-visible ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
@@ -217,62 +347,7 @@ function Select({
         </span>
         <ChevronDown size={14} className="text-neutral-400 shrink-0" />
       </button>
-      {open && (
-        <div
-          className={`absolute right-0 top-full mt-1 min-w-full bg-white border border-neutral-200 rounded-md shadow-lg py-1 z-20 overflow-y-auto ${menuMaxHeight ? "" : "max-h-64"} ${dropdownClassName}`}
-          style={menuMaxHeight ? { maxHeight: menuMaxHeight } : undefined}
-        >
-          {searchable && (
-            <div className="sticky top-0 bg-white px-2 pb-2 pt-1 border-b border-neutral-100">
-              <input
-                ref={searchInputRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={searchPlaceholder}
-                className="w-full h-8 px-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-              />
-            </div>
-          )}
-          {filteredOptions.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-neutral-500">No matches found</div>
-          ) : (
-            filteredOptions.map((opt) => {
-              const usedByAgentName = disabledClaims?.[opt];
-              const optionDisabled = Boolean(usedByAgentName);
-              if (optionDisabled) {
-                return (
-                  <TooltipProvider key={opt} delayDuration={200}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-neutral-400 cursor-not-allowed whitespace-nowrap">
-                          <span className="min-w-0 flex-1 truncate">{opt}</span>
-                          <Lock size={13} className="shrink-0 text-neutral-400" strokeWidth={2} aria-hidden />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="left" className="text-xs">
-                        Used by {usedByAgentName}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                );
-              }
-              return (
-                <button
-                  key={opt}
-                  type="button"
-                  onMouseDown={() => {
-                    onChange(opt);
-                    setOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-sm text-neutral-800 hover:bg-neutral-50 whitespace-nowrap"
-                >
-                  {opt}
-                </button>
-              );
-            })
-          )}
-        </div>
-      )}
+      {dropdownMenu ? createPortal(dropdownMenu, document.body) : null}
     </div>
   );
 }
@@ -1028,12 +1103,6 @@ function RouteRuleConditionsEditor({ fields, conditions = [], onChange }) {
   );
 }
 
-function Toggle({ checked, onChange, size = "default", className = "" }) {
-  return (
-    <Switch checked={checked} onCheckedChange={onChange} size={size} className={className} />
-  );
-}
-
 function Row({
   label,
   subcopy,
@@ -1063,7 +1132,15 @@ function Row({
           <div className="text-sm text-neutral-500 mt-0.5 leading-snug">{subcopy}</div>
         )}
       </div>
-      <div className="shrink-0 flex flex-col items-end gap-1">{children}</div>
+      <div
+        className={
+          align === "center"
+            ? "shrink-0"
+            : "shrink-0 flex flex-col items-end gap-1"
+        }
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -1084,27 +1161,69 @@ function isTeamScopeConfigured(scope) {
   return Boolean(scope.team && scope.view);
 }
 
+function isStatusCondition(condition) {
+  return condition?.filterType === SCOPE_STATUS_FILTER;
+}
+
 function createTeamCondition(initial = {}) {
+  const filterType = initial.filterType ?? initial.field ?? SCOPE_FILTER_OPTIONS[0];
   const fallbackValue =
     typeof initial.value === "string" && initial.value.trim()
       ? [initial.value.trim()]
       : [];
   return {
     id: initial.id ?? newConditionId(),
-    filterType: initial.filterType ?? initial.field ?? SCOPE_FILTER_OPTIONS[0],
-    operator: initial.operator ?? "is",
+    filterType,
+    operator:
+      initial.operator ?? (isStatusCondition({ filterType }) ? "Include only" : "is"),
     valueIds: Array.isArray(initial.valueIds) ? initial.valueIds : fallbackValue,
   };
+}
+
+function getScopeStatus(scope) {
+  const statusCondition = (scope.conditions || []).find(isStatusCondition);
+  if (statusCondition) {
+    const mode = statusCondition.operator === "Exclude" ? "Exclude" : "Include only";
+    return {
+      statusMode: mode,
+      statuses: statusCondition.valueIds || [],
+    };
+  }
+  return {
+    statusMode: scope.statusMode ?? "Include only",
+    statuses: scope.statuses || [],
+  };
+}
+
+function getScopeFilters(scope) {
+  return (scope.conditions || []).filter((condition) => !isStatusCondition(condition));
+}
+
+function syncScopeStatusFields(scope) {
+  const { statusMode, statuses } = getScopeStatus(scope);
+  return { ...scope, statusMode, statuses };
 }
 
 function createTeamScope(id, initial = {}) {
   const team = initial.team ?? "";
   const view = initial.view ?? initial.board ?? "";
   const configured = isTeamScopeConfigured({ team, view });
-  const conditions = Array.isArray(initial.conditions)
+  let conditions = Array.isArray(initial.conditions)
     ? initial.conditions.map((condition) => createTeamCondition(condition))
     : [];
-  return {
+  const hasStatusCondition = conditions.some(isStatusCondition);
+  const legacyStatuses = initial.statuses ?? [];
+  if (!hasStatusCondition && legacyStatuses.length > 0) {
+    conditions = [
+      ...conditions,
+      createTeamCondition({
+        filterType: SCOPE_STATUS_FILTER,
+        operator: initial.statusMode ?? "Include only",
+        valueIds: legacyStatuses,
+      }),
+    ];
+  }
+  return syncScopeStatusFields({
     id,
     team,
     view,
@@ -1113,11 +1232,147 @@ function createTeamScope(id, initial = {}) {
     statuses: initial.statuses ?? [],
     skipFlowAssignedTickets: initial.skipFlowAssignedTickets ?? false,
     expanded: initial.expanded ?? !configured,
+  });
+}
+
+function statusSetsEqual(statusA, statusB) {
+  if (statusA.statusMode !== statusB.statusMode) return false;
+  const a = statusA.statuses;
+  const b = statusB.statuses;
+  if (a.length === 0 && b.length === 0) return true;
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((value, index) => value === sortedB[index]);
+}
+
+/** Broad section includes every status the narrow section matches (empty = all statuses). */
+function statusBroadContainsNarrow(broadScope, narrowScope) {
+  const broad = getScopeStatus(broadScope);
+  const narrow = getScopeStatus(narrowScope);
+  if (broad.statusMode !== narrow.statusMode) return false;
+  if (broad.statuses.length === 0) return true;
+  if (narrow.statuses.length === 0) return false;
+  return narrow.statuses.every((status) => broad.statuses.includes(status));
+}
+
+function isScopeDuplicate(scopeA, scopeB) {
+  if (!scopeBoardsMatch(scopeA, scopeB)) return false;
+  if (!statusSetsEqual(getScopeStatus(scopeA), getScopeStatus(scopeB))) return false;
+  return !hasScopeConditions(scopeA) && !hasScopeConditions(scopeB);
+}
+
+function isScopeSuperset(broadScope, narrowScope) {
+  if (!scopeBoardsMatch(broadScope, narrowScope)) return false;
+  if (!statusBroadContainsNarrow(broadScope, narrowScope)) return false;
+  if (isScopeDuplicate(broadScope, narrowScope)) return false;
+
+  const broadHasFilters = hasScopeConditions(broadScope);
+  const narrowHasFilters = hasScopeConditions(narrowScope);
+
+  if (narrowHasFilters && !broadHasFilters) return true;
+
+  if (!narrowHasFilters && !broadHasFilters) {
+    const broad = getScopeStatus(broadScope);
+    const narrow = getScopeStatus(narrowScope);
+    if (narrow.statuses.length > 0 && broad.statuses.length === 0) return true;
+    if (narrow.statuses.length > 0 && broad.statuses.length > 0) {
+      const narrowSet = new Set(narrow.statuses);
+      return (
+        narrow.statuses.every((status) => broad.statuses.includes(status)) &&
+        broad.statuses.some((status) => !narrowSet.has(status))
+      );
+    }
+  }
+
+  return false;
+}
+
+function hasScopeConditions(scope) {
+  return getScopeFilters(scope).length > 0;
+}
+
+function effectiveHasFilterConditions(scope, pendingCondition) {
+  if (hasScopeConditions(scope)) return true;
+  if (!pendingCondition || isStatusCondition(pendingCondition)) return false;
+  return (pendingCondition.valueIds || []).length > 0;
+}
+
+function scopeBoardsMatch(scopeA, scopeB) {
+  return Boolean(scopeA.view && scopeA.view === scopeB.view);
+}
+
+function computeScopeWarningsBySectionId(teamScopes) {
+  const warnings = {};
+
+  const addWarning = (scopeId, warning) => {
+    if (!warnings[scopeId]) warnings[scopeId] = [];
+    warnings[scopeId].push(warning);
   };
+
+  for (let i = 0; i < teamScopes.length; i += 1) {
+    for (let j = i + 1; j < teamScopes.length; j += 1) {
+      const scopeA = teamScopes[i];
+      const scopeB = teamScopes[j];
+
+      if (isScopeDuplicate(scopeA, scopeB)) {
+        addWarning(scopeA.id, {
+          type: "duplicate",
+          teamName: scopeB.team || "another section",
+        });
+        addWarning(scopeB.id, {
+          type: "duplicate",
+          teamName: scopeA.team || "another section",
+        });
+        continue;
+      }
+
+      if (isScopeSuperset(scopeB, scopeA)) {
+        addWarning(scopeB.id, {
+          type: "superset",
+          teamName: scopeA.team || "another section",
+        });
+      } else if (isScopeSuperset(scopeA, scopeB)) {
+        addWarning(scopeA.id, {
+          type: "superset",
+          teamName: scopeB.team || "another section",
+        });
+      }
+    }
+  }
+
+  return warnings;
+}
+
+function formatScopeWarningMessage(warning) {
+  if (warning.type === "duplicate") {
+    return `Same scope as ${warning.teamName} — tickets may dispatch to both teams. Add conditions to separate.`;
+  }
+  return `Includes all tickets from ${warning.teamName}'s scope. Add conditions here to separate.`;
+}
+
+function ScopeWarningNote({ message }) {
+  return (
+    <p
+      role="status"
+      aria-live="polite"
+      className="flex items-start gap-1.5 text-sm leading-snug text-amber-700"
+    >
+      <TriangleAlert
+        size={14}
+        className="mt-0.5 shrink-0 text-amber-600"
+        strokeWidth={2}
+        aria-hidden
+      />
+      <span>{message}</span>
+    </p>
+  );
 }
 
 function AgentScopeTeamCard({
   scope,
+  scopeWarnings = [],
+  excludedTeams = [],
   onUpdate,
   onRemove,
 }) {
@@ -1125,6 +1380,12 @@ function AgentScopeTeamCard({
   const [openConditionMenu, setOpenConditionMenu] = useState(null);
   const [pendingCondition, setPendingCondition] = useState(null);
   const headerTeamLabel = scope.team || "Select team";
+  const dispatchToTeamOptions = useMemo(() => {
+    const excluded = new Set(excludedTeams);
+    return SCOPE_TEAM_OPTIONS.filter(
+      (team) => scope.team === team || !excluded.has(team)
+    );
+  }, [excludedTeams, scope.team]);
   const pendingValueOptions = pendingCondition
     ? SCOPE_FILTER_METADATA[pendingCondition.filterType]?.values || []
     : [];
@@ -1136,7 +1397,10 @@ function AgentScopeTeamCard({
     (filterType) => !activeFilterTypes.has(filterType)
   );
   const startConditionFromFilter = (filterType) => {
-    const condition = createTeamCondition({ filterType });
+    const condition = createTeamCondition({
+      filterType,
+      operator: filterType === SCOPE_STATUS_FILTER ? "Include only" : "is",
+    });
     setPendingCondition(condition);
     setOpenConditionMenu({ kind: "value", conditionId: condition.id });
   };
@@ -1163,10 +1427,17 @@ function AgentScopeTeamCard({
       conditions: scope.conditions.filter((condition) => condition.id !== conditionId),
     });
   };
-  const toggleConditionOperator = (condition) =>
+  const toggleConditionMiddle = (condition) => {
+    if (isStatusCondition(condition)) {
+      updateCondition(condition.id, {
+        operator: condition.operator === "Include only" ? "Exclude" : "Include only",
+      });
+      return;
+    }
     updateCondition(condition.id, {
       operator: condition.operator === "is" ? "is not" : "is",
     });
+  };
   const toggleConditionValue = (condition, value) => {
     const current = condition.valueIds || [];
     const next = current.includes(value)
@@ -1180,6 +1451,12 @@ function AgentScopeTeamCard({
     if (values.length === 1) return values[0];
     return `${values.length} selected`;
   };
+  const visibleScopeWarnings = scopeWarnings.filter(() => {
+    if (effectiveHasFilterConditions(scope, pendingCondition)) return false;
+    return true;
+  });
+  const supersetWarnings = visibleScopeWarnings.filter((warning) => warning.type === "superset");
+  const duplicateWarnings = visibleScopeWarnings.filter((warning) => warning.type === "duplicate");
 
   useEffect(() => {
     if (!openConditionMenu) return undefined;
@@ -1259,18 +1536,34 @@ function AgentScopeTeamCard({
       {scope.expanded ? (
         <div className="border-t border-neutral-100">
           <Row
-            label="Inbox Team"
-            subcopy="Select the team tickets will be dispatched to."
+            label="Dispatch to"
+            subcopy="Select the Inbox team that threads will be dispatched to."
           >
             <Select
               value={scope.team}
-              options={SCOPE_TEAM_OPTIONS}
+              options={dispatchToTeamOptions}
               onChange={(team) => onUpdate({ team })}
               placeholder="Select team"
               dropdownClassName="w-[220px]"
             />
           </Row>
-          <div className="border-b border-neutral-100 px-5 py-3">
+          <div className="border-b border-neutral-100 px-5 py-4">
+            <div className="flex items-start justify-between gap-6">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-neutral-900">Dispatch from</div>
+                <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                  Select the board to dispatch threads from.
+                </p>
+              </div>
+              <Select
+                value={scope.view}
+                options={SCOPE_BOARD_OPTIONS}
+                onChange={(view) => onUpdate({ view })}
+                placeholder="Select board"
+                dropdownClassName="w-[220px]"
+              />
+            </div>
+            <div className="mt-3 min-w-0">
             <div
               ref={conditionEditorRef}
               className="relative flex flex-wrap items-center gap-2"
@@ -1279,6 +1572,7 @@ function AgentScopeTeamCard({
                 const filterMeta = SCOPE_FILTER_METADATA[condition.filterType];
                 const FilterIcon = filterMeta?.icon || FileText;
                 const valueOptions = filterMeta?.values || [];
+                const statusCondition = isStatusCondition(condition);
                 const valueMenuOpen =
                   openConditionMenu?.kind === "value" &&
                   openConditionMenu.conditionId === condition.id;
@@ -1293,8 +1587,10 @@ function AgentScopeTeamCard({
                     </span>
                     <button
                       type="button"
-                      onClick={() => toggleConditionOperator(condition)}
-                      className="border-r border-neutral-300 px-2 py-[3px] text-neutral-700 transition-colors hover:bg-neutral-50"
+                      onClick={() => toggleConditionMiddle(condition)}
+                      className={`border-r border-neutral-300 px-2 py-[3px] text-neutral-700 transition-colors hover:bg-neutral-50 ${
+                        statusCondition ? "whitespace-nowrap" : ""
+                      }`}
                     >
                       {condition.operator}
                     </button>
@@ -1419,50 +1715,43 @@ function AgentScopeTeamCard({
                 ) : null}
               </div>
             </div>
-          </div>
-          <Row
-            label="Dispatch from"
-            subcopy="Select the board to dispatch tickets from."
-          >
-            <Select
-              value={scope.view}
-              options={SCOPE_BOARD_OPTIONS}
-              onChange={(view) => onUpdate({ view })}
-              placeholder="Select board"
-              dropdownClassName="w-[220px]"
-            />
-          </Row>
-          <Row
-            label="Status"
-            subcopy="Select status(es) the agent should focus on."
-          >
-            <div className="flex items-center gap-2">
-              <Select
-                value={scope.statusMode}
-                options={["Include only", "Exclude"]}
-                onChange={(statusMode) => onUpdate({ statusMode })}
-                dropdownClassName="w-[150px]"
-              />
-              <MultiSelect
-                values={scope.statuses}
-                options={SCOPE_STATUS_OPTIONS}
-                onChange={(statuses) => onUpdate({ statuses })}
-                placeholder="Select status"
-                dropdownClassName="w-[220px]"
-              />
+            {supersetWarnings.length > 0 ? (
+              <div className="mt-2 space-y-1.5">
+                {supersetWarnings.map((warning, index) => (
+                  <ScopeWarningNote
+                    key={`superset-${warning.teamName}-${index}`}
+                    message={formatScopeWarningMessage(warning)}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {duplicateWarnings.length > 0 ? (
+              <div className="mt-2 space-y-1.5">
+                {duplicateWarnings.map((warning, index) => (
+                  <ScopeWarningNote
+                    key={`duplicate-${warning.teamName}-${index}`}
+                    message={formatScopeWarningMessage(warning)}
+                  />
+                ))}
+              </div>
+            ) : null}
             </div>
-          </Row>
+          </div>
           <Row
             label="Skip tickets assigned by Flows"
             subcopy="When enabled, the agent will skip tickets that are already handled by a Flow with an assign action."
             noBorder
             align="center"
           >
-            <Toggle
-              checked={scope.skipFlowAssignedTickets}
-              onChange={(skipFlowAssignedTickets) => onUpdate({ skipFlowAssignedTickets })}
-              size="sm"
-            />
+            <div className="inline-flex shrink-0 items-center">
+              <Switch
+                size="sm"
+                checked={scope.skipFlowAssignedTickets}
+                onCheckedChange={(skipFlowAssignedTickets) =>
+                  onUpdate({ skipFlowAssignedTickets })
+                }
+              />
+            </div>
           </Row>
         </div>
       ) : null}
@@ -1495,18 +1784,32 @@ const AGENT_CONTEXT_FIELDS = [
 
 const RANKING_SIGNAL_DEFINITIONS = [
   {
-    id: "priority",
-    name: "Priority",
-    description: "Higher priority tickets rank first.",
-    enabled: true,
-    value: 75,
-  },
-  {
     id: "sla-risk",
     name: "SLA risk",
     description: "Tickets closer to breaching rank higher.",
     enabled: true,
-    value: 80,
+    value: 50,
+  },
+  {
+    id: "priority",
+    name: "Priority",
+    description: "Higher priority tickets rank first.",
+    enabled: true,
+    value: 50,
+  },
+  {
+    id: "client-replied",
+    name: "Client replied",
+    description: "Tickets with unanswered replies rank higher.",
+    enabled: true,
+    value: 50,
+  },
+  {
+    id: "sentiment",
+    name: "Sentiment",
+    description: "Tickets with negative client sentiment rank higher.",
+    enabled: true,
+    value: 50,
   },
   {
     id: "ticket-age",
@@ -1518,25 +1821,27 @@ const RANKING_SIGNAL_DEFINITIONS = [
   {
     id: "contact-type",
     name: "Contact type",
-    description: "Tickets where the client is waiting on a response rank higher.",
+    description: "Tickets matching the selected type rank higher.",
     enabled: true,
-    value: 65,
+    value: 50,
     options: ["Standard", "VIP", "Executive"],
     selectedOption: "Standard",
   },
   {
-    id: "client-replied",
-    name: "Client replied",
-    description: "Tickets where the client is waiting on a response rank higher.",
+    id: "company-type",
+    name: "Company type",
+    description: "Tickets matching the selected company type rank higher.",
     enabled: true,
-    value: 70,
+    value: 50,
+    options: SCOPE_FILTER_METADATA["Company type"].values,
+    selectedOption: "Managed Service",
   },
   {
     id: "agreement-type",
     name: "Agreement type",
     description: "Tickets matching the selected type rank higher.",
-    enabled: true,
-    value: 40,
+    enabled: false,
+    value: 50,
     options: [
       "Block Time - One time",
       "Block Time - Recurring",
@@ -1602,11 +1907,10 @@ function SignalRowContent({
         <span className="text-lg leading-none">⋮⋮</span>
       </button>
 
-      <Toggle
+      <Switch
         checked={signal.enabled}
-        onChange={(checked) => onUpdateSignal(signal.id, { enabled: checked })}
+        onCheckedChange={(checked) => onUpdateSignal(signal.id, { enabled: checked })}
         size="sm"
-        className="data-[state=checked]:[&>span]:translate-x-3"
       />
 
       <div className="min-w-0 flex-1">
@@ -1621,6 +1925,7 @@ function SignalRowContent({
                 onChange={(selectedOption) => onUpdateSignal(signal.id, { selectedOption })}
                 disabled={isDisabled || isOverlay}
                 triggerClassName="h-6 max-w-[180px] px-2 py-0 text-xs"
+                menuWidth={signal.id === "agreement-type" ? 300 : undefined}
               />
             </>
           ) : null}
@@ -1651,6 +1956,7 @@ function SignalRowContent({
 
 function SortableSignalRow({
   signal,
+  isFirst,
   isDropTarget,
   isLast,
   onUpdateSignal,
@@ -1673,7 +1979,9 @@ function SortableSignalRow({
     <div
       ref={setNodeRef}
       style={style}
-      className={`${!isLast ? "border-b border-neutral-200" : ""} ${isDragging ? "opacity-40" : ""} ${
+      className={`bg-white ${isFirst ? "overflow-hidden rounded-t-lg" : ""} ${isLast ? "overflow-hidden rounded-b-lg" : ""} ${
+        !isLast ? "border-b border-neutral-200" : ""
+      } ${isDragging ? "opacity-40" : ""} ${
         isDropTarget ? "relative before:absolute before:left-5 before:right-5 before:top-0 before:h-0.5 before:bg-emerald-500" : ""
       }`}
     >
@@ -1682,6 +1990,163 @@ function SortableSignalRow({
         onUpdateSignal={onUpdateSignal}
         dragHandleProps={{ ref: setActivatorNodeRef, ...attributes, ...listeners }}
       />
+    </div>
+  );
+}
+
+const GUIDANCE_AGENT_CONTEXT_ITEMS = [
+  "Contact name and type",
+  "Company name and type",
+  "Ticket priority, type, subtype, and item",
+  "Thread SLA status and time to breach",
+  "Ticket summary and conversation history",
+  "Agreement name and type",
+  "Ticket configuration",
+];
+
+const RANKING_SIGNALS_INFO_TITLE = "How ranking works";
+const RANKING_SIGNALS_INFO_PARAGRAPHS = [
+  "Each signal you enable contributes points to a ticket's total score. The slider controls how much weight that signal carries — higher means it influences the score more. Tickets with the highest total score are served first.",
+  "Drag to reorder signals. The order affects how ties are broken when two tickets have equal scores.",
+];
+const RANKING_SIGNALS_INFO_FOOTNOTE =
+  "Scores update when any of the signals change on a ticket.";
+
+function GuidanceSection({
+  guidanceTab,
+  onGuidanceTabChange,
+  customGuidance,
+  onCustomGuidanceChange,
+  assignAgentInstructions,
+  onAssignAgentInstructionsChange,
+  onResetAgentInstructions,
+  onUndoLastSaved,
+  canUndoLastSaved = false,
+}) {
+  const guidanceTextareaClassName =
+    "w-full resize-y rounded-md border border-neutral-200 px-3 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 leading-relaxed font-['IBM_Plex_Mono',ui-monospace,monospace]";
+  const customGuidanceTextareaClassName = `${guidanceTextareaClassName} min-h-[140px]`;
+  const agentInstructionsTextareaClassName = `${guidanceTextareaClassName} min-h-[200px]`;
+
+  return (
+    <div className="mb-10">
+      <div className="mb-3">
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-base font-semibold text-neutral-900">Guidance</h2>
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex rounded p-0.5 text-neutral-400 hover:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                aria-label="What the agent already knows"
+              >
+                <Info size={14} aria-hidden />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              align="start"
+              sideOffset={8}
+              className="w-[300px] max-w-[300px] rounded-lg !border !border-[#E9E9EB] bg-white px-4 py-3 text-neutral-900 shadow-lg"
+            >
+              <div className="text-sm font-medium text-neutral-900">
+                The agent already knows:
+              </div>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-neutral-500">
+                {GUIDANCE_AGENT_CONTEXT_ITEMS.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <p className="mt-0.5 text-sm text-neutral-500">
+          Provide additional instructions and context for the dispatch agent when prioritizing
+          threads.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-neutral-200 bg-white">
+        <div className="px-5 pt-4">
+          <div
+            className="inline-flex rounded-md border border-neutral-200 bg-neutral-50 p-0.5"
+            role="tablist"
+            aria-label="Guidance mode"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={guidanceTab === "basic"}
+              onClick={() => onGuidanceTabChange("basic")}
+              className={`rounded px-3 py-1 text-sm font-medium transition-colors ${
+                guidanceTab === "basic"
+                  ? "bg-white text-neutral-900 shadow-sm"
+                  : "text-neutral-600 hover:text-neutral-900"
+              }`}
+            >
+              Basic
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={guidanceTab === "advanced"}
+              onClick={() => onGuidanceTabChange("advanced")}
+              className={`inline-flex items-center gap-1.5 rounded px-3 py-1 text-sm font-medium transition-colors ${
+                guidanceTab === "advanced"
+                  ? "bg-white text-neutral-900 shadow-sm"
+                  : "text-neutral-600 hover:text-neutral-900"
+              }`}
+            >
+              <Code2 size={14} className="text-neutral-500" aria-hidden />
+              Advanced
+            </button>
+          </div>
+        </div>
+
+        {guidanceTab === "basic" ? (
+          <div className="px-5 pb-4 pt-3" role="tabpanel">
+            <div className="text-sm font-medium text-neutral-900">Custom guidance</div>
+            <textarea
+              value={customGuidance}
+              onChange={(event) => onCustomGuidanceChange(event.target.value)}
+              placeholder="Enter custom guidance for the dispatch agent (optional)..."
+              className={`mt-2 ${customGuidanceTextareaClassName}`}
+            />
+          </div>
+        ) : (
+          <div className="px-5 pb-4 pt-3" role="tabpanel">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="text-sm font-medium text-neutral-900">Agent instructions</div>
+              <div className="flex shrink-0 items-center gap-4">
+                <button
+                  type="button"
+                  onClick={onUndoLastSaved}
+                  disabled={!canUndoLastSaved}
+                  className={`text-sm font-medium ${
+                    canUndoLastSaved
+                      ? "text-neutral-700 hover:text-neutral-900"
+                      : "cursor-not-allowed text-neutral-400"
+                  }`}
+                >
+                  Undo last saved changes
+                </button>
+                <button
+                  type="button"
+                  onClick={onResetAgentInstructions}
+                  className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                >
+                  Reset to default
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={assignAgentInstructions}
+              onChange={(event) => onAssignAgentInstructionsChange(event.target.value)}
+              className={agentInstructionsTextareaClassName}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1738,13 +2203,42 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
   return (
     <div className="mb-10">
       <div className="mb-3">
-        <h2 className="text-base font-semibold text-neutral-900">Ranking signals</h2>
-        <p className="text-sm text-neutral-500 mt-0.5">
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-base font-semibold text-neutral-900">Ranking signals</h2>
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex rounded p-0.5 text-neutral-400 hover:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                aria-label={RANKING_SIGNALS_INFO_TITLE}
+              >
+                <Info size={14} aria-hidden />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              align="start"
+              sideOffset={8}
+              className="w-[300px] max-w-[300px] rounded-lg !border !border-[#E9E9EB] bg-white px-4 py-3 text-neutral-900 shadow-lg"
+            >
+              <div className="text-sm font-medium text-neutral-900">
+                {RANKING_SIGNALS_INFO_TITLE}
+              </div>
+              <div className="mt-2 space-y-2 text-sm text-neutral-500">
+                {RANKING_SIGNALS_INFO_PARAGRAPHS.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-neutral-400">{RANKING_SIGNALS_INFO_FOOTNOTE}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <p className="mt-0.5 text-sm text-neutral-500">
           Control how much each signal influences ticket ranking. Drag to reorder.
         </p>
       </div>
 
-      <div className="bg-white border border-neutral-200 rounded-lg">
+      <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -1758,6 +2252,7 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
               <SortableSignalRow
                 key={signal.id}
                 signal={signal}
+                isFirst={index === 0}
                 isLast={index === signals.length - 1}
                 isDropTarget={activeId && overId === signal.id && activeId !== signal.id}
                 onUpdateSignal={updateSignal}
@@ -2000,9 +2495,9 @@ function AgentCard({
           <div className="text-xs text-neutral-500 mt-0.5 truncate">{subtitle}</div>
         </div>
         <div onClick={(e) => e.stopPropagation()}>
-          <Toggle
+          <Switch
             checked={agent.active}
-            onChange={() => onToggleActive(agent.id)}
+            onCheckedChange={() => onToggleActive(agent.id)}
           />
         </div>
       </div>
@@ -2175,6 +2670,7 @@ function ConfigPage({
   // --- Agent identity
   const [agentDisplayName, setAgentDisplayName] = useState(initialAgent?.name ?? "");
   const [avatarId, setAvatarId] = useState(initialAgent?.avatarId ?? "avatar-1");
+  const [dispatchMode, setDispatchMode] = useState(initialAgent?.dispatchMode ?? "Auto-assign");
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const TEST_PANEL_MIN_WIDTH = 300;
   const TEST_PANEL_MAX_WIDTH = 600;
@@ -2272,8 +2768,53 @@ function ConfigPage({
   const [slotSelection, setSlotSelection] = useState("Earliest available");
   const [duration, setDuration] = useState("30 min");
 
-  // --- Assignment logic (Assign + Assign+Schedule)
-  const [assignMode] = useState(initialAgent?.assignMode ?? "Push");
+  // --- Technician assignment (Auto-assign)
+  const [maxActiveThreads, setMaxActiveThreads] = useState(
+    initialAgent?.maxActiveThreads ?? "No limit"
+  );
+  const [calendarAvailability, setCalendarAvailability] = useState(() => {
+    const agent = initialAgent;
+    if (!agent) return "Ignore";
+    if (
+      agent.calendarAvailability &&
+      CALENDAR_AVAILABILITY_OPTIONS.includes(agent.calendarAvailability)
+    ) {
+      return agent.calendarAvailability;
+    }
+    if (agent.calendarAvailabilityEnabled === false) return "Ignore";
+    const window = agent.calendarAvailabilityWindow;
+    if (window && CALENDAR_AVAILABILITY_OPTIONS.includes(window)) return window;
+    return "Ignore";
+  });
+  const [assignmentTimeout, setAssignmentTimeout] = useState(
+    initialAgent?.assignmentTimeout ?? "2 minutes"
+  );
+  const [fallbackStatus, setFallbackStatus] = useState(
+    initialAgent?.fallbackStatus ?? "Escalation"
+  );
+
+  const [lastPublishedAt, setLastPublishedAt] = useState(() => {
+    const raw = initialAgent?.lastPublishedAt;
+    if (!raw) return null;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  });
+
+  const [guidanceTab, setGuidanceTab] = useState("basic");
+  const [customGuidance, setCustomGuidance] = useState(initialAgent?.guidance ?? "");
+  const initialAssignAgentInstructions =
+    initialAgent?.assignAgentInstructions ?? DEFAULT_ASSIGN_AGENT_INSTRUCTIONS;
+  const [assignAgentInstructions, setAssignAgentInstructions] = useState(
+    initialAssignAgentInstructions
+  );
+  const [lastSavedAssignAgentInstructions, setLastSavedAssignAgentInstructions] =
+    useState(initialAssignAgentInstructions);
+  const canUndoAssignAgentInstructions =
+    assignAgentInstructions !== lastSavedAssignAgentInstructions;
+  const assignModeInstructions = useMemo(() => {
+    const parts = [assignAgentInstructions.trim(), customGuidance.trim()].filter(Boolean);
+    return parts.join("\n\n");
+  }, [assignAgentInstructions, customGuidance]);
 
   // --- Agent autonomy (Assign + Assign+Schedule)
   const [limitWorkload, setLimitWorkload] = useState(false);
@@ -2430,6 +2971,19 @@ function ConfigPage({
     () => teamScopes.map((scope) => scope.view).filter(Boolean),
     [teamScopes]
   );
+  const scopeWarningsBySectionId = useMemo(
+    () => computeScopeWarningsBySectionId(teamScopes),
+    [teamScopes]
+  );
+  const excludedTeamsByScopeId = useMemo(() => {
+    const excludedByScopeId = {};
+    teamScopes.forEach((scope) => {
+      excludedByScopeId[scope.id] = teamScopes
+        .filter((otherScope) => otherScope.id !== scope.id && otherScope.team)
+        .map((otherScope) => otherScope.team);
+    });
+    return excludedByScopeId;
+  }, [teamScopes]);
 
   const hasErrors = Object.keys(ruleErrors).length > 0;
   const missingRequired =
@@ -2444,7 +2998,11 @@ function ConfigPage({
     setTeamScopes((prev) =>
       prev.map((scope) => {
         if (scope.id !== id) return scope;
-        return { ...scope, ...patch };
+        const next = { ...scope, ...patch };
+        if (Object.prototype.hasOwnProperty.call(patch, "conditions")) {
+          return syncScopeStatusFields(next);
+        }
+        return next;
       })
     );
   };
@@ -2462,6 +3020,9 @@ function ConfigPage({
 
   const handleSaveClick = () => {
     const primaryScope = teamScopes[0];
+    const publishedAt = new Date();
+    setLastPublishedAt(publishedAt);
+    setLastSavedAssignAgentInstructions(assignAgentInstructions);
     onSave({
       name: agentDisplayName.trim(),
       avatarId,
@@ -2471,17 +3032,28 @@ function ConfigPage({
       team: isRoute ? null : teams[0] || null,
       teams: isRoute ? [] : teams,
       teamScopes: isRoute ? undefined : teamScopes,
-      assignMode,
+      dispatchMode: isRoute ? undefined : dispatchMode,
+      maxActiveThreads: isRoute ? undefined : maxActiveThreads,
+      calendarAvailability: isRoute ? undefined : calendarAvailability,
+      assignmentTimeout: isRoute ? undefined : assignmentTimeout,
       excludeTechs: [],
       excludeTechsEnabled: false,
       skipFlowAssignedTickets: primaryScope?.skipFlowAssignedTickets ?? false,
-      fallbackStatus: "No change",
+      fallbackStatus: isRoute ? "No change" : fallbackStatus,
       destinations: isRoute ? rules.map((r) => r.board).filter(Boolean) : [],
       routeRules: isRoute ? rules : undefined,
-      agentInstructions: isRoute ? undefined : agentInstructions,
+      guidance: isRoute ? undefined : customGuidance,
+      assignAgentInstructions: isRoute ? undefined : assignAgentInstructions,
+      agentInstructions: isRoute
+        ? undefined
+        : dispatchMode === "Auto-assign"
+          ? assignModeInstructions
+          : agentInstructions,
       rankingSignals: isRoute ? undefined : rankingSignals,
-      statuses: isRoute ? statuses : primaryScope?.statuses ?? [],
+      statuses: isRoute ? statuses : getScopeStatus(primaryScope ?? {}).statuses,
+      statusMode: isRoute ? statusMode : getScopeStatus(primaryScope ?? {}).statusMode,
       active,
+      lastPublishedAt: publishedAt.toISOString(),
     });
   };
 
@@ -2516,13 +3088,65 @@ function ConfigPage({
           >
             Test agent
           </button>
-          <Toggle checked={active} onChange={setActive} />
+          <Switch checked={active} onCheckedChange={setActive} />
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-8 py-10">
+
+        {!isRoute && (
+          <div className="mb-10">
+            <div className="mb-3">
+              <h2 className="text-base font-semibold text-neutral-900">Auto dispatch mode</h2>
+            </div>
+            <div className="rounded-lg border border-neutral-200 bg-white p-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setDispatchMode("Auto-assign")}
+                  className={`flex w-full items-center gap-3 rounded-lg border px-4 py-4 text-left transition-colors ${
+                    dispatchMode === "Auto-assign"
+                      ? "border-teal-500"
+                      : "border-neutral-200 hover:border-neutral-300"
+                  }`}
+                >
+                  <Sparkles size={18} className="shrink-0 text-neutral-400" strokeWidth={1.75} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-neutral-900">Auto-assign</div>
+                    <p className="mt-0.5 text-sm text-neutral-500">
+                      Threads are assigned automatically
+                    </p>
+                  </div>
+                  {dispatchMode === "Auto-assign" ? (
+                    <Check size={16} className="shrink-0 text-teal-600" strokeWidth={2.5} />
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDispatchMode("Queue-based")}
+                  className={`flex w-full items-center gap-3 rounded-lg border px-4 py-4 text-left transition-colors ${
+                    dispatchMode === "Queue-based"
+                      ? "border-teal-500"
+                      : "border-neutral-200 hover:border-neutral-300"
+                  }`}
+                >
+                  <ListOrdered size={18} className="shrink-0 text-neutral-400" strokeWidth={1.75} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-neutral-900">Queue-based</div>
+                    <p className="mt-0.5 text-sm text-neutral-500">
+                      Techs request threads when ready
+                    </p>
+                  </div>
+                  {dispatchMode === "Queue-based" ? (
+                    <Check size={16} className="shrink-0 text-teal-600" strokeWidth={2.5} />
+                  ) : null}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <Section title="Agent identity">
           <Row
@@ -2642,9 +3266,13 @@ function ConfigPage({
         ) : (
           <div className="mb-10">
             <div className="mb-3">
-              <h2 className="text-base font-semibold text-neutral-900">Agent scope</h2>
+              <h2 className="text-base font-semibold text-neutral-900">
+                {dispatchMode === "Queue-based" ? "Scope" : "Agent scope"}
+              </h2>
               <p className="text-sm text-neutral-500 mt-0.5">
-                Configure how each team scope handles ticket dispatching.
+                {dispatchMode === "Queue-based"
+                  ? "Use multiple sections when teams share the same ranking logic."
+                  : "Use multiple sections when teams share the same dispatch logic."}
               </p>
             </div>
             <div className="space-y-3">
@@ -2652,6 +3280,8 @@ function ConfigPage({
                 <AgentScopeTeamCard
                   key={scope.id}
                   scope={scope}
+                  scopeWarnings={scopeWarningsBySectionId[scope.id] ?? []}
+                  excludedTeams={excludedTeamsByScopeId[scope.id] ?? []}
                   onUpdate={(patch) => updateTeamScope(scope.id, patch)}
                   onRemove={() => removeTeamScope(scope.id)}
                 />
@@ -2663,7 +3293,7 @@ function ConfigPage({
               className="mt-3 flex items-center gap-1.5 rounded-md border border-emerald-500 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:bg-emerald-50/60 transition-colors"
             >
               <Plus size={14} />
-              Add another team
+              Add team
             </button>
           </div>
         )}
@@ -2853,8 +3483,79 @@ function ConfigPage({
           </Section>
         )}
 
-        {/* Ranking signals — Assign + Assign+Schedule */}
-        {!isRoute && (
+        {/* Technician assignment + Guidance — Auto-assign only */}
+        {!isRoute && dispatchMode === "Auto-assign" && (
+          <>
+            <Section
+              title="Technician assignment"
+              subcopy="Define how the agent selects the right technician for each thread."
+            >
+              <Row
+                label="Max active threads"
+                subcopy="Maximum active tickets before the agent skips this tech."
+              >
+                <Select
+                  value={maxActiveThreads}
+                  options={["No limit", "5", "10", "15", "20"]}
+                  onChange={setMaxActiveThreads}
+                />
+              </Row>
+              <Row
+                label="Calendar availability"
+                subcopy={
+                  calendarAvailability === "Ignore"
+                    ? "The agent will not check calendar availability when assigning techs."
+                    : "Only assign techs with open time in Outlook."
+                }
+              >
+                <Select
+                  value={calendarAvailability}
+                  options={CALENDAR_AVAILABILITY_OPTIONS}
+                  onChange={setCalendarAvailability}
+                />
+              </Row>
+              <Row
+                label="Assignment timeout"
+                subcopy="Time before the agent stops searching."
+              >
+                <Select
+                  value={assignmentTimeout}
+                  options={["2 minutes", "5 minutes", "10 minutes"]}
+                  onChange={setAssignmentTimeout}
+                />
+              </Row>
+              <Row
+                label="Fallback status"
+                subcopy="Status set when no one is available."
+                noBorder
+              >
+                <Select
+                  value={fallbackStatus}
+                  options={["No change", "Escalation", "On Hold", "Unassigned"]}
+                  onChange={setFallbackStatus}
+                />
+              </Row>
+            </Section>
+            <GuidanceSection
+              guidanceTab={guidanceTab}
+              onGuidanceTabChange={setGuidanceTab}
+              customGuidance={customGuidance}
+              onCustomGuidanceChange={setCustomGuidance}
+              assignAgentInstructions={assignAgentInstructions}
+              onAssignAgentInstructionsChange={setAssignAgentInstructions}
+              onResetAgentInstructions={() =>
+                setAssignAgentInstructions(DEFAULT_ASSIGN_AGENT_INSTRUCTIONS)
+              }
+              canUndoLastSaved={canUndoAssignAgentInstructions}
+              onUndoLastSaved={() =>
+                setAssignAgentInstructions(lastSavedAssignAgentInstructions)
+              }
+            />
+          </>
+        )}
+
+        {/* Ranking signals — Queue-based only */}
+        {!isRoute && dispatchMode === "Queue-based" && (
           <RankingSignalsSection signals={rankingSignals} onChangeSignals={setRankingSignals} />
         )}
 
@@ -2870,7 +3571,11 @@ function ConfigPage({
                 noBorder={!limitWorkload}
                 align="center"
               >
-                <Toggle checked={limitWorkload} onChange={setLimitWorkload} size="sm" />
+                <Switch
+                  checked={limitWorkload}
+                  onCheckedChange={setLimitWorkload}
+                  size="sm"
+                />
               </Row>
               {limitWorkload && (
                 <Row
@@ -2903,7 +3608,12 @@ function ConfigPage({
               Resolve the highlighted conflicts before saving.
             </div>
           )}
-          <div className="flex items-center gap-3">
+          <div className="flex w-full items-center justify-end gap-3">
+            {lastPublishedAt ? (
+              <span className="mr-auto text-xs text-neutral-400">
+                {formatLastPublished(lastPublishedAt)}
+              </span>
+            ) : null}
             <button
               onClick={onBack}
               className="text-sm text-neutral-600 hover:text-neutral-900 px-4 py-2"
@@ -2955,8 +3665,11 @@ function ConfigPage({
               <div className="flex h-full min-h-0 flex-col overflow-hidden">
                 <TestAgentPanel
                   configuredTeams={teams}
-                  agentInstructions={agentInstructions}
+                  agentInstructions={
+                    dispatchMode === "Auto-assign" ? assignModeInstructions : agentInstructions
+                  }
                   rankingSignals={rankingSignals}
+                  outputMode={dispatchMode === "Auto-assign" ? "llm" : "points"}
                 />
               </div>
             </>

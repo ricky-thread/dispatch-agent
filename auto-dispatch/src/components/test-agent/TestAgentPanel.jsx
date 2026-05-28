@@ -141,7 +141,13 @@ function TestAgentFeedbackModal({
   );
 }
 
-function ThreadCardList({ threads, hasRunTest, rankingById, onRemoveThread }) {
+function ThreadCardList({
+  threads,
+  hasRunTest,
+  rankingById,
+  onRemoveThread,
+  rankingDisplayMode = "points",
+}) {
   return (
     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
       {threads.map((thread) => {
@@ -152,6 +158,7 @@ function ThreadCardList({ threads, hasRunTest, rankingById, onRemoveThread }) {
             key={thread.id}
             thread={thread}
             ranking={ranking}
+            rankingDisplayMode={rankingDisplayMode}
             onRemove={onRemoveThread}
           />
         );
@@ -164,6 +171,7 @@ export default function TestAgentPanel({
   configuredTeams = [],
   agentInstructions = "",
   rankingSignals = [],
+  outputMode = "points",
 }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -189,7 +197,8 @@ export default function TestAgentPanel({
   };
 
   const atMax = selectedIds.length >= MAX_TEST_THREADS;
-  const canRunTest = selectedIds.length >= 2;
+  const minThreadsForRunTest = outputMode === "llm" ? 2 : 1;
+  const canRunTest = selectedIds.length >= minThreadsForRunTest;
 
   const groupByTeam = configuredTeams.length >= 2;
   const rankingById = useMemo(
@@ -222,6 +231,19 @@ export default function TestAgentPanel({
         .filter(Boolean),
     }));
   }, [configuredTeams, groupByTeam, hasRunTest, rankingSignals, selectedIds]);
+
+  const teamGroupedThreadCount = useMemo(
+    () =>
+      teamSections?.reduce((sum, section) => sum + section.threads.length, 0) ??
+      0,
+    [teamSections]
+  );
+
+  const showTeamGroupedThreads =
+    groupByTeam &&
+    teamSections != null &&
+    teamSections.length > 0 &&
+    teamGroupedThreadCount === displayedThreads.length;
 
   const filteredThreads = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -290,7 +312,7 @@ export default function TestAgentPanel({
     setFeedbackModalOpen(false);
     setFeedbackSubmitting(false);
     setFeedbackDismissed(false);
-  }, [agentInstructions]);
+  }, [agentInstructions, outputMode]);
 
   const handleSelectThread = (threadId) => {
     if (selectedIds.includes(threadId)) return;
@@ -303,7 +325,7 @@ export default function TestAgentPanel({
 
   const handleRemoveThread = (threadId) => {
     const next = selectedIds.filter((id) => id !== threadId);
-    if (next.length < 2) {
+    if (next.length < minThreadsForRunTest) {
       setHasRunTest(false);
       resetFeedback();
     }
@@ -349,8 +371,18 @@ export default function TestAgentPanel({
     }, FEEDBACK_SUBMIT_DELAY_MS);
   };
 
+  const rankingDisplayMode = outputMode === "llm" ? "llm" : "points";
+  const isAutoAssignMode = rankingDisplayMode === "llm";
+
+  const rankedResultsHeader = isAutoAssignMode
+    ? "Dispatch Agent's ranking."
+    : "Points-based ranking.";
+
   const showFeedbackBanner =
-    hasRunTest && displayedThreads.length > 0 && !feedbackDismissed;
+    isAutoAssignMode &&
+    hasRunTest &&
+    displayedThreads.length > 0 &&
+    !feedbackDismissed;
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -488,7 +520,7 @@ export default function TestAgentPanel({
         <div className="mb-3 flex items-center justify-between gap-3">
           {hasRunTest ? (
             <div className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-neutral-900">
-              <span className="truncate">Dispatch Agent&apos;s ranking</span>
+          <span className="truncate">{rankedResultsHeader}</span>
             </div>
           ) : (
             <div className="text-sm font-medium text-neutral-900">
@@ -526,7 +558,7 @@ export default function TestAgentPanel({
         />
 
         {displayedThreads.length > 0 ? (
-          groupByTeam && teamSections ? (
+          showTeamGroupedThreads ? (
             <div className="space-y-5">
               {teamSections.map((section) => (
                 <section key={section.team}>
@@ -537,6 +569,7 @@ export default function TestAgentPanel({
                     threads={section.threads}
                     hasRunTest={hasRunTest}
                     rankingById={rankingById}
+                    rankingDisplayMode={rankingDisplayMode}
                     onRemoveThread={handleRemoveThread}
                   />
                 </section>
@@ -547,6 +580,7 @@ export default function TestAgentPanel({
               threads={displayedThreads}
               hasRunTest={hasRunTest}
               rankingById={rankingById}
+              rankingDisplayMode={rankingDisplayMode}
               onRemoveThread={handleRemoveThread}
             />
           )
@@ -558,7 +592,9 @@ export default function TestAgentPanel({
               className="mb-4 text-neutral-300"
             />
             <p className="max-w-[260px] text-sm leading-snug text-neutral-500">
-              Select two or more threads to see how the agent would rank them.
+              {minThreadsForRunTest === 1
+                ? "Select one or more threads to see how they would be ranked."
+                : "Select two or more threads to see how the agent would rank them."}
             </p>
           </div>
         )}

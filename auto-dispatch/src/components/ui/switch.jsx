@@ -4,13 +4,11 @@ import * as SwitchPrimitives from "@radix-ui/react-switch";
 const SWITCH_SIZES = {
   default: {
     root: "h-6 w-11",
-    thumb:
-      "h-5 w-5 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
+    thumb: "h-5 w-5 top-0.5",
   },
   sm: {
-    root: "h-4 w-7",
-    thumb:
-      "h-3 w-3 data-[state=checked]:translate-x-3.5 data-[state=unchecked]:translate-x-0",
+    root: "h-5 w-9",
+    thumb: "h-4 w-4 top-0.5",
   },
 };
 
@@ -23,8 +21,9 @@ export const Switch = React.forwardRef(function Switch(
     <SwitchPrimitives.Root
       ref={ref}
       className={[
-        "peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+        "relative inline-block shrink-0 cursor-pointer appearance-none rounded-full border-0 p-0",
         dim.root,
+        "transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-neutral-300",
@@ -34,8 +33,12 @@ export const Switch = React.forwardRef(function Switch(
     >
       <SwitchPrimitives.Thumb
         className={[
-          "pointer-events-none block rounded-full bg-white shadow ring-0 transition-transform",
+          "pointer-events-none absolute rounded-full bg-white shadow-sm ring-0",
           dim.thumb,
+          "left-0.5 right-auto",
+          "data-[state=checked]:left-auto data-[state=checked]:right-0.5",
+          "data-[state=unchecked]:left-0.5 data-[state=unchecked]:right-auto",
+          "transition-[left,right] duration-100 ease-in-out",
         ].join(" ")}
       />
     </SwitchPrimitives.Root>

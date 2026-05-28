@@ -11,12 +11,16 @@ export const TEST_AGENT_THREADS = [
     message: "Multiple users are experiencing an outage - c...",
     timestamp: "30m ago",
     status: "IN PROGRESS",
-    statusClass: "bg-sky-100 text-sky-800",
     priority: "P3",
     typeColor: "bg-yellow-400",
     assigneeInitials: "AR",
     assigneeColor: "bg-violet-100 text-violet-700",
-    slaLabel: "On time",
+    slaLabel: "At risk",
+    sentiment: "negative",
+    hasNotification: true,
+    contactType: "VIP",
+    companyType: "Managed Service",
+    agreementType: "Managed Service",
   },
   {
     id: "1236",
@@ -29,13 +33,16 @@ export const TEST_AGENT_THREADS = [
     message: "Unable to connect to corporate VPN from home...",
     timestamp: "45m ago",
     status: "NEW",
-    statusClass: "bg-neutral-100 text-neutral-700",
     priority: "P1",
     typeColor: "bg-red-500",
     assigneeInitials: "LP",
     assigneeColor: "bg-amber-100 text-amber-800",
-    slaLabel: "On time",
+    slaLabel: "Breaching",
+    sentiment: "negative",
     hasNotification: true,
+    contactType: "VIP",
+    companyType: "Managed Service",
+    agreementType: "Managed Service",
   },
   {
     id: "1237",
@@ -48,12 +55,16 @@ export const TEST_AGENT_THREADS = [
     message: "Teams won't load after the latest Windows update...",
     timestamp: "1h ago",
     status: "NEW",
-    statusClass: "bg-neutral-100 text-neutral-700",
     priority: "P2",
     typeColor: "bg-amber-400",
     assigneeInitials: "NK",
     assigneeColor: "bg-cyan-100 text-cyan-800",
     slaLabel: "On time",
+    sentiment: "neutral",
+    hasNotification: false,
+    contactType: "Standard",
+    companyType: "Break Fix",
+    agreementType: "Time and materials",
   },
   {
     id: "1238",
@@ -66,12 +77,16 @@ export const TEST_AGENT_THREADS = [
     message: "Following up on yesterday's ticket — VPN still drops...",
     timestamp: "2h ago",
     status: "IN PROGRESS",
-    statusClass: "bg-sky-100 text-sky-800",
-    priority: "P3",
-    typeColor: "bg-yellow-400",
+    priority: "P1",
+    typeColor: "bg-red-500",
     assigneeInitials: "MS",
     assigneeColor: "bg-pink-100 text-pink-700",
-    slaLabel: "On time",
+    slaLabel: "Breached",
+    sentiment: "negative",
+    hasNotification: true,
+    contactType: "Standard",
+    companyType: "Managed Service",
+    agreementType: "Time and materials",
   },
   {
     id: "1239",
@@ -84,12 +99,16 @@ export const TEST_AGENT_THREADS = [
     message: "Getting an authentication error when opening Quickbooks...",
     timestamp: "15m ago",
     status: "NEW",
-    statusClass: "bg-neutral-100 text-neutral-700",
     priority: "P4",
     typeColor: "bg-blue-500",
     assigneeInitials: "TR",
     assigneeColor: "bg-teal-100 text-teal-700",
     slaLabel: "On time",
+    sentiment: "positive",
+    hasNotification: false,
+    contactType: "Standard",
+    companyType: "Managed Service",
+    agreementType: "Time and materials",
   },
   {
     id: "1240",
@@ -102,12 +121,16 @@ export const TEST_AGENT_THREADS = [
     message: "Inbox stopped updating this morning — send/receive fails...",
     timestamp: "3h ago",
     status: "IN PROGRESS",
-    statusClass: "bg-sky-100 text-sky-800",
     priority: "P2",
     typeColor: "bg-amber-400",
     assigneeInitials: "KC",
     assigneeColor: "bg-lime-100 text-lime-800",
-    slaLabel: "On time",
+    slaLabel: "At risk",
+    sentiment: "negative",
+    hasNotification: true,
+    contactType: "Standard",
+    companyType: "Internal",
+    agreementType: "Monitoring",
   },
   {
     id: "1241",
@@ -118,15 +141,18 @@ export const TEST_AGENT_THREADS = [
     contactInitials: "CL",
     contactColor: "bg-blue-100 text-blue-700",
     message: "Device is completely unresponsive after overnight charge...",
-    timestamp: "20m ago",
-    status: "NEW",
-    statusClass: "bg-neutral-100 text-neutral-700",
+    timestamp: "4h ago",
+    status: "IN PROGRESS",
     priority: "P1",
     typeColor: "bg-red-500",
     assigneeInitials: "DW",
     assigneeColor: "bg-orange-100 text-orange-800",
-    slaLabel: "On time",
-    hasNotification: true,
+    slaLabel: "Breaching",
+    sentiment: "neutral",
+    hasNotification: false,
+    contactType: "Executive",
+    companyType: "Managed Service",
+    agreementType: "Managed Service",
   },
   {
     id: "1242",
@@ -138,13 +164,17 @@ export const TEST_AGENT_THREADS = [
     contactColor: "bg-yellow-100 text-yellow-800",
     message: "Wi-Fi is usable but very slow across the office floor...",
     timestamp: "4h ago",
-    status: "IN PROGRESS",
-    statusClass: "bg-sky-100 text-sky-800",
+    status: "WAITING CLIENT RESPONSE",
     priority: "P4",
     typeColor: "bg-blue-500",
     assigneeInitials: "RB",
     assigneeColor: "bg-slate-100 text-slate-700",
     slaLabel: "On time",
+    sentiment: "positive",
+    hasNotification: false,
+    contactType: "Standard",
+    companyType: "Managed Service",
+    agreementType: "Time and materials",
   },
   {
     id: "1243",
@@ -155,14 +185,18 @@ export const TEST_AGENT_THREADS = [
     contactInitials: "TB",
     contactColor: "bg-teal-100 text-teal-700",
     message: "Shared printer shows offline since the driver update...",
-    timestamp: "1h ago",
-    status: "NEW",
-    statusClass: "bg-neutral-100 text-neutral-700",
+    timestamp: "2h ago",
+    status: "WAITING CLIENT RESPONSE",
     priority: "P3",
     typeColor: "bg-yellow-400",
     assigneeInitials: "GH",
     assigneeColor: "bg-indigo-100 text-indigo-700",
-    slaLabel: "On time",
+    slaLabel: "At risk",
+    sentiment: "neutral",
+    hasNotification: false,
+    contactType: "Standard",
+    companyType: "Government",
+    agreementType: "Time and materials",
   },
   {
     id: "1244",
@@ -173,27 +207,33 @@ export const TEST_AGENT_THREADS = [
     contactInitials: "LG",
     contactColor: "bg-green-100 text-green-700",
     message: "Authenticator codes are being rejected at login...",
-    timestamp: "50m ago",
+    timestamp: "1h ago",
     status: "NEW",
-    statusClass: "bg-neutral-100 text-neutral-700",
     priority: "P2",
     typeColor: "bg-amber-400",
     assigneeInitials: "PM",
     assigneeColor: "bg-rose-100 text-rose-700",
-    slaLabel: "On time",
+    slaLabel: "Breached",
+    sentiment: "negative",
+    hasNotification: true,
+    contactType: "VIP",
+    companyType: "Managed Service",
+    agreementType: "Managed Service",
   },
 ];
 
 export const MAX_TEST_THREADS = 10;
-const BASE_POINTS_BY_POSITION = [100, 85, 70, 55, 40, 25];
+const BASE_POINTS_BY_POSITION = [100, 85, 70, 55, 40, 25, 10];
 
 export const DEFAULT_TEST_AGENT_SIGNALS = [
-  { id: "sla-risk", enabled: true, value: 80 },
-  { id: "priority", enabled: true, value: 75 },
-  { id: "client-replied", enabled: true, value: 70 },
-  { id: "contact-type", enabled: true, value: 65 },
+  { id: "sla-risk", enabled: true, value: 50 },
+  { id: "priority", enabled: true, value: 50 },
+  { id: "client-replied", enabled: true, value: 50 },
+  { id: "sentiment", enabled: true, value: 50 },
   { id: "ticket-age", enabled: true, value: 50 },
-  { id: "agreement-type", enabled: true, value: 40 },
+  { id: "contact-type", enabled: true, value: 50 },
+  { id: "company-type", enabled: true, value: 50 },
+  { id: "agreement-type", enabled: false, value: 50 },
 ];
 
 /** Mock inbox team per thread for multi-team test agent ranking. */
@@ -214,86 +254,134 @@ export function getTestAgentThreadTeam(threadId) {
   return TEST_AGENT_THREAD_TEAMS[threadId] ?? null;
 }
 
+const SLA_RISK_BY_LABEL = {
+  Breached: { factor: 1, label: "SLA breached" },
+  Breaching: { factor: 0.85, label: "SLA breaching" },
+  "At risk": { factor: 0.6, label: "SLA at risk" },
+  "On time": { factor: 0, label: "On time" },
+};
+
+/** Blue dot = client sent last message, awaiting tech response. Drives client-replied ranking. */
+function getClientRepliedSignal(thread) {
+  if (thread?.hasNotification) {
+    return { factor: 1, label: "Unanswered client reply" };
+  }
+  return { factor: 0.15, label: "Tech replied last" };
+}
+
+function getSlaRiskSignal(thread) {
+  return SLA_RISK_BY_LABEL[thread?.slaLabel] ?? SLA_RISK_BY_LABEL["On time"];
+}
+
+function getRankingSignalConfig(rankingSignals, signalId) {
+  if (!Array.isArray(rankingSignals)) return undefined;
+  return rankingSignals.find((signal) => signal.id === signalId);
+}
+
+function hasDropdownSelection(selectedOption) {
+  return typeof selectedOption === "string" && selectedOption.trim() !== "";
+}
+
+/** Match dropdown filter from Ranking signals: match = 1, no selection = 0.5, mismatch = 0. */
+function getDropdownFilterSignal(threadValue, signalConfig, { matchLabel, noSelectionFactor = 0.5 }) {
+  const selectedOption = signalConfig?.selectedOption;
+  if (!hasDropdownSelection(selectedOption)) {
+    return { factor: noSelectionFactor, label: null };
+  }
+  if (threadValue === selectedOption) {
+    return { factor: 1, label: matchLabel(threadValue, selectedOption) };
+  }
+  return { factor: 0, label: null };
+}
+
+function getContactTypeSignal(thread, signalConfig) {
+  return getDropdownFilterSignal(thread?.contactType, signalConfig, {
+    matchLabel: (contactType) => `${contactType} contact`,
+  });
+}
+
+function getCompanyTypeSignal(thread, signalConfig) {
+  return getDropdownFilterSignal(thread?.companyType, signalConfig, {
+    matchLabel: (companyType) => `${companyType} company`,
+  });
+}
+
+function getAgreementTypeSignal(thread, signalConfig) {
+  return getDropdownFilterSignal(thread?.agreementType, signalConfig, {
+    matchLabel: (agreementType) => `${agreementType} agreement`,
+  });
+}
+
+function buildThreadFactors(thread, rankingSignals) {
+  return {
+    ...(TEST_THREAD_SIGNAL_FACTORS[thread?.id] ?? {}),
+    "sla-risk": getSlaRiskSignal(thread),
+    "client-replied": getClientRepliedSignal(thread),
+    "contact-type": getContactTypeSignal(
+      thread,
+      getRankingSignalConfig(rankingSignals, "contact-type")
+    ),
+    "company-type": getCompanyTypeSignal(
+      thread,
+      getRankingSignalConfig(rankingSignals, "company-type")
+    ),
+    "agreement-type": getAgreementTypeSignal(
+      thread,
+      getRankingSignalConfig(rankingSignals, "agreement-type")
+    ),
+  };
+}
+
 const TEST_THREAD_SIGNAL_FACTORS = {
   1236: {
-    "sla-risk": { factor: 1, label: "SLA breaching" },
     priority: { factor: 1, label: "P1 priority" },
-    "client-replied": { factor: 0.6, label: "No client reply" },
-    "contact-type": { factor: 1, label: "VIP contact" },
+    sentiment: { factor: 0.95, label: "Negative client sentiment" },
     "ticket-age": { factor: 0.35, label: "45m old ticket" },
-    "agreement-type": { factor: 1, label: "Managed Service agreement" },
-  },
-  1234: {
-    "sla-risk": { factor: 0.85, label: "SLA at risk" },
-    priority: { factor: 0.5, label: "P3 priority" },
-    "client-replied": { factor: 1, label: "Unanswered client reply" },
-    "contact-type": { factor: 1, label: "VIP contact" },
-    "ticket-age": { factor: 0.25, label: "30m old ticket" },
-    "agreement-type": { factor: 1, label: "Managed Service agreement" },
-  },
-  1240: {
-    "sla-risk": { factor: 0, label: "No SLA risk" },
-    priority: { factor: 0.75, label: "P2 priority" },
-    "client-replied": { factor: 1, label: "Unanswered client reply" },
-    "contact-type": { factor: 0.45, label: "Standard contact" },
-    "ticket-age": { factor: 0.75, label: "3h old ticket" },
-    "agreement-type": { factor: 0.6, label: "Monitoring agreement" },
-  },
-  1237: {
-    "sla-risk": { factor: 0, label: "No SLA risk" },
-    priority: { factor: 0.75, label: "P2 priority" },
-    "client-replied": { factor: 0.9, label: "No client reply" },
-    "contact-type": { factor: 0.45, label: "Standard contact" },
-    "ticket-age": { factor: 0.45, label: "1h old ticket" },
-    "agreement-type": { factor: 0.4, label: "Time and materials agreement" },
   },
   1238: {
-    "sla-risk": { factor: 0, label: "No SLA risk" },
-    priority: { factor: 0.5, label: "P3 priority" },
-    "client-replied": { factor: 1, label: "Unanswered client reply" },
-    "contact-type": { factor: 0.45, label: "Standard contact" },
-    "ticket-age": { factor: 0.6, label: "2h old ticket" },
-    "agreement-type": { factor: 0.4, label: "Time and materials agreement" },
-  },
-  1239: {
-    "sla-risk": { factor: 0, label: "No SLA risk" },
-    priority: { factor: 0.25, label: "P4 priority" },
-    "client-replied": { factor: 0.9, label: "No client reply" },
-    "contact-type": { factor: 0.45, label: "Standard contact" },
-    "ticket-age": { factor: 0.2, label: "15m old ticket" },
-    "agreement-type": { factor: 0.4, label: "Time and materials agreement" },
-  },
-  1241: {
-    "sla-risk": { factor: 0.9, label: "SLA at risk" },
     priority: { factor: 1, label: "P1 priority" },
-    "client-replied": { factor: 0.85, label: "No client reply" },
-    "contact-type": { factor: 0.9, label: "Executive contact" },
-    "ticket-age": { factor: 0.3, label: "20m old ticket" },
-    "agreement-type": { factor: 0.8, label: "Managed Service agreement" },
-  },
-  1242: {
-    "sla-risk": { factor: 0, label: "No SLA risk" },
-    priority: { factor: 0.25, label: "P4 priority" },
-    "client-replied": { factor: 0.65, label: "Client replied recently" },
-    "contact-type": { factor: 0.45, label: "Standard contact" },
-    "ticket-age": { factor: 0.85, label: "4h old ticket" },
-    "agreement-type": { factor: 0.4, label: "Time and materials agreement" },
-  },
-  1243: {
-    "sla-risk": { factor: 0.2, label: "SLA stable" },
-    priority: { factor: 0.5, label: "P3 priority" },
-    "client-replied": { factor: 0.75, label: "No client reply" },
-    "contact-type": { factor: 0.45, label: "Standard contact" },
-    "ticket-age": { factor: 0.45, label: "1h old ticket" },
-    "agreement-type": { factor: 0.4, label: "Time and materials agreement" },
+    sentiment: { factor: 0.9, label: "Negative client sentiment" },
+    "ticket-age": { factor: 0.6, label: "2h old ticket" },
   },
   1244: {
-    "sla-risk": { factor: 0.55, label: "SLA at risk" },
     priority: { factor: 0.75, label: "P2 priority" },
-    "client-replied": { factor: 0.8, label: "No client reply" },
-    "contact-type": { factor: 0.55, label: "VIP contact" },
-    "ticket-age": { factor: 0.4, label: "50m old ticket" },
-    "agreement-type": { factor: 0.7, label: "Managed Service agreement" },
+    sentiment: { factor: 0.85, label: "Negative client sentiment" },
+    "ticket-age": { factor: 0.45, label: "1h old ticket" },
+  },
+  1241: {
+    priority: { factor: 1, label: "P1 priority" },
+    sentiment: { factor: 0.45, label: "Neutral client sentiment" },
+    "ticket-age": { factor: 0.85, label: "4h old ticket" },
+  },
+  1234: {
+    priority: { factor: 0.5, label: "P3 priority" },
+    sentiment: { factor: 0.8, label: "Negative client sentiment" },
+    "ticket-age": { factor: 0.25, label: "30m old ticket" },
+  },
+  1240: {
+    priority: { factor: 0.75, label: "P2 priority" },
+    sentiment: { factor: 0.85, label: "Negative client sentiment" },
+    "ticket-age": { factor: 0.75, label: "3h old ticket" },
+  },
+  1243: {
+    priority: { factor: 0.5, label: "P3 priority" },
+    sentiment: { factor: 0.45, label: "Neutral client sentiment" },
+    "ticket-age": { factor: 0.6, label: "2h old ticket" },
+  },
+  1237: {
+    priority: { factor: 0.75, label: "P2 priority" },
+    sentiment: { factor: 0.45, label: "Neutral client sentiment" },
+    "ticket-age": { factor: 0.45, label: "1h old ticket" },
+  },
+  1239: {
+    priority: { factor: 0.25, label: "P4 priority" },
+    sentiment: { factor: 0.15, label: "Positive client sentiment" },
+    "ticket-age": { factor: 0.2, label: "15m old ticket" },
+  },
+  1242: {
+    priority: { factor: 0.25, label: "P4 priority" },
+    sentiment: { factor: 0.15, label: "Positive client sentiment" },
+    "ticket-age": { factor: 0.85, label: "4h old ticket" },
   },
 };
 
@@ -304,13 +392,24 @@ export function getTestAgentThread(id) {
 }
 
 function normalizeSignals(rankingSignals) {
+  const definitionById = new Map(DEFAULT_TEST_AGENT_SIGNALS.map((signal) => [signal.id, signal]));
   const savedById = new Map(
     Array.isArray(rankingSignals)
       ? rankingSignals.map((signal) => [signal.id, signal])
       : []
   );
-  return DEFAULT_TEST_AGENT_SIGNALS.map((signal) => {
-    const saved = savedById.get(signal.id);
+  const orderedIds =
+    Array.isArray(rankingSignals) && rankingSignals.length > 0
+      ? rankingSignals.map((signal) => signal.id).filter((id) => definitionById.has(id))
+      : DEFAULT_TEST_AGENT_SIGNALS.map((signal) => signal.id);
+  const seen = new Set(orderedIds);
+  DEFAULT_TEST_AGENT_SIGNALS.forEach((signal) => {
+    if (!seen.has(signal.id)) orderedIds.push(signal.id);
+  });
+
+  return orderedIds.map((id) => {
+    const signal = definitionById.get(id);
+    const saved = savedById.get(id);
     const value = Number(saved?.value);
     return {
       ...signal,
@@ -323,7 +422,8 @@ function normalizeSignals(rankingSignals) {
 export function computeTestAgentRanking(threadIds, rankingSignals) {
   const normalizedSignals = normalizeSignals(rankingSignals);
   const scored = threadIds.map((threadId, originalIndex) => {
-    const factors = TEST_THREAD_SIGNAL_FACTORS[threadId] ?? {};
+    const thread = getTestAgentThread(threadId);
+    const factors = buildThreadFactors(thread, rankingSignals);
     const contributions = normalizedSignals.map((signal, index) => {
       const basePoints = BASE_POINTS_BY_POSITION[index] ?? 0;
       if (!signal.enabled) {

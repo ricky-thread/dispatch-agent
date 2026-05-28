@@ -1,4 +1,4 @@
-import { Smile, X } from "lucide-react";
+import { Frown, Meh, Smile, X } from "lucide-react";
 
 function TeamsIcon() {
   return (
@@ -17,11 +17,26 @@ function TeamsIcon() {
   );
 }
 
-function SlaOnTimeIcon() {
+const SLA_STYLES = {
+  "On time": { stroke: "#10b981", textClass: "text-emerald-600" },
+  "At risk": { stroke: "#f59e0b", textClass: "text-amber-600" },
+  Breaching: { stroke: "#f97316", textClass: "text-orange-600" },
+  Breached: { stroke: "#ef4444", textClass: "text-red-600" },
+};
+
+const SENTIMENT_ICONS = {
+  positive: { Icon: Smile, className: "text-emerald-500" },
+  neutral: { Icon: Meh, className: "text-neutral-400" },
+  negative: { Icon: Frown, className: "text-red-500" },
+};
+
+const STATUS_BADGE_CLASS = "bg-blue-100 text-blue-800";
+
+function SlaStatusIcon({ stroke }) {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden className="shrink-0">
-      <circle cx="6" cy="6" r="5" fill="none" stroke="#10b981" strokeWidth="1.25" />
-      <path d="M6 6V1A5 5 0 0 1 11 6H6Z" fill="#10b981" />
+      <circle cx="6" cy="6" r="5" fill="none" stroke={stroke} strokeWidth="1.25" />
+      <path d="M6 6V1A5 5 0 0 1 11 6H6Z" fill={stroke} />
     </svg>
   );
 }
@@ -37,14 +52,29 @@ function PersonAvatar({ initials, colorClass, size = "md" }) {
   );
 }
 
-export default function ThreadCard({ thread, onRemove, ranking }) {
+export default function ThreadCard({ thread, onRemove, ranking, rankingDisplayMode = "points" }) {
+  const slaStyle = SLA_STYLES[thread.slaLabel] ?? SLA_STYLES["On time"];
+  const sentimentConfig =
+    SENTIMENT_ICONS[thread.sentiment] ?? SENTIMENT_ICONS.neutral;
+  const SentimentIcon = sentimentConfig.Icon;
+
   return (
     <div className="group relative border-b border-neutral-200 bg-white last:border-b-0 hover:bg-neutral-50/50">
       {ranking ? (
         <div className="border-b border-teal-100 bg-teal-50 px-3.5 py-2 text-[13px] leading-snug text-teal-900">
           <span className="font-semibold">{ranking.rank}. </span>
-          <span className="text-teal-800/65">{ranking.score} pts</span>
-          {ranking.reasoning ? ` — ${ranking.reasoning}.` : ""}
+          {rankingDisplayMode === "points" ? (
+            <>
+              <span className="text-teal-800/65">{ranking.score} pts</span>
+              {ranking.reasoning ? ` — ${ranking.reasoning}.` : ""}
+            </>
+          ) : (
+            <span className="text-teal-800/90">
+              {ranking.reasoning
+                ? `Reasoning: ${ranking.reasoning}.`
+                : "Reasoning: Ranked using current assignment guidance."}
+            </span>
+          )}
         </div>
       ) : null}
 
@@ -71,7 +101,11 @@ export default function ThreadCard({ thread, onRemove, ranking }) {
         <span className="flex shrink-0 items-center gap-1.5 text-xs text-neutral-500">
           <span className="truncate">{thread.company}</span>
           {thread.hasNotification ? (
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden />
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-blue-500"
+              title="Client replied — awaiting your response"
+              aria-label="Client replied — awaiting your response"
+            />
           ) : null}
         </span>
       </div>
@@ -102,13 +136,22 @@ export default function ThreadCard({ thread, onRemove, ranking }) {
           size="sm"
         />
         <span
-          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${thread.statusClass}`}
+          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_BADGE_CLASS}`}
         >
           {thread.status}
         </span>
-        <Smile size={13} className="shrink-0 text-neutral-400" strokeWidth={1.75} />
-        <span className="flex items-center gap-1 text-[11px] text-emerald-600">
-          <SlaOnTimeIcon />
+        <SentimentIcon
+          size={13}
+          className={`shrink-0 ${sentimentConfig.className}`}
+          strokeWidth={1.75}
+          aria-label={
+            thread.sentiment
+              ? `${thread.sentiment} client sentiment`
+              : "Client sentiment"
+          }
+        />
+        <span className={`flex items-center gap-1 text-[11px] ${slaStyle.textClass}`}>
+          <SlaStatusIcon stroke={slaStyle.stroke} />
           {thread.slaLabel}
         </span>
       </div>

@@ -2320,7 +2320,7 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
           </Tooltip>
         </div>
         <p className="mt-0.5 text-sm text-neutral-500">
-          Control how much each signal influences ticket ranking. Drag to reorder.
+          Control how much each factor influences thread scoring. Drag to reorder by importance.
         </p>
       </div>
 

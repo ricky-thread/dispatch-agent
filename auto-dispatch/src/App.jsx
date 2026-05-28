@@ -21,6 +21,14 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -41,7 +49,6 @@ import {
   CheckSquare,
   ChevronDown,
   ChevronUp,
-  Code,
   File,
   FileText,
   Folder,
@@ -161,6 +168,7 @@ function Select({
   searchPlaceholder = "Type to filter...",
   menuMaxHeight,
   disabledClaims = {},
+  disabled = false,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -196,8 +204,13 @@ function Select({
     <div ref={rootRef} className={`relative ${className}`}>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className={`flex items-center justify-between gap-2 max-w-[220px] px-3 py-1.5 bg-white border border-neutral-200 rounded-md text-sm hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 ${triggerClassName}`}
+        className={`flex items-center justify-between gap-2 max-w-[220px] whitespace-nowrap px-3 py-1.5 bg-white border border-neutral-200 rounded-md text-sm ${
+          disabled
+            ? "cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400"
+            : "hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+        } ${triggerClassName}`}
       >
         <span className={`truncate ${isEmpty ? "text-neutral-400" : "text-neutral-800"}`}>
           {value || placeholder}
@@ -1015,9 +1028,9 @@ function RouteRuleConditionsEditor({ fields, conditions = [], onChange }) {
   );
 }
 
-function Toggle({ checked, onChange, size = "default" }) {
+function Toggle({ checked, onChange, size = "default", className = "" }) {
   return (
-    <Switch checked={checked} onCheckedChange={onChange} size={size} />
+    <Switch checked={checked} onCheckedChange={onChange} size={size} className={className} />
   );
 }
 
@@ -1480,298 +1493,289 @@ const AGENT_CONTEXT_FIELDS = [
   { label: "Ticket configuration", token: "ticket_configuration" },
 ];
 
-const DEFAULT_AGENT_INSTRUCTIONS = `You are a dispatch agent built into Thread, a support
-operations platform used by Managed Service Providers
-(MSPs). Your job is to rank open tickets in order of
-urgency so that when a technician requests their next
-ticket, they are always served the most important one
-first.
-
-You do not assign tickets to technicians, communicate
-with clients, or modify any ticket data. You only rank.
-
-WHAT YOU KNOW ABOUT EACH TICKET:
-- Contact name and type (e.g. standard, VIP)
-- Company name and type (e.g. managed services, break fix)
-- Ticket priority (P1, P2, P3, P4)
-- Ticket type, subtype, and item
-- Thread SLA status and time to breach
-- Ticket summary and conversation history
-- Agreement name and type
-- Ticket configuration
-- Time since last customer reply
-
-RANKING LOGIC:
-Rank all tickets from highest to lowest urgency using
-the following signals. Consider all signals together
-rather than applying them one at a time.
-
-1. VIP contacts should always be ranked first,
-   regardless of ticket priority or age.
-
-2. Tickets closest to breaching their Thread SLA
-   should rank above tickets with more time remaining.
-
-3. Rank higher priority tickets (P1 > P2 > P3 > P4)
-   above lower priority ones when contact type and
-   Thread SLA status are equal.
-
-4. Tickets with unanswered customer replies should
-   rank above tickets with no recent activity.
-
-5. When all else is equal, older tickets rank first.
-
-Use good judgment when signals conflict. A P1 ticket
-with no customer reply may outrank a P3 ticket from a
-VIP contact. A ticket breaching Thread SLA in 10
-minutes may outrank a higher priority ticket with
-plenty of SLA time remaining.
-
-EDGE CASES:
-- If two tickets are equal across all signals, rank
-  the older ticket higher.
-- If a ticket is missing priority or contact type,
-  treat it as P3 and standard contact type.
-- If the queue is empty, return: "No tickets currently
-  in queue."
-
-CUSTOM GUIDANCE:
-{custom_guidance}
-
-If custom guidance is provided above, apply it in
-addition to the default ranking logic. Where custom
-guidance conflicts with the default logic, defer to
-the custom guidance.`;
-
-const CUSTOM_GUIDANCE_PLACEHOLDER = "{custom_guidance}";
-const CUSTOM_GUIDANCE_HEADER = "CUSTOM GUIDANCE:\n";
-const CUSTOM_GUIDANCE_FOOTER = "\n\nIf custom guidance is provided above";
-
-function extractCustomGuidance(instructions) {
-  if (!instructions) return "";
-
-  const placeholderIdx = instructions.indexOf(CUSTOM_GUIDANCE_PLACEHOLDER);
-  if (placeholderIdx !== -1) {
-    return "";
-  }
-
-  const headerIdx = instructions.indexOf(CUSTOM_GUIDANCE_HEADER);
-  if (headerIdx === -1) return "";
-
-  const start = headerIdx + CUSTOM_GUIDANCE_HEADER.length;
-  const footerIdx = instructions.indexOf(CUSTOM_GUIDANCE_FOOTER, start);
-  const section =
-    footerIdx === -1 ? instructions.slice(start) : instructions.slice(start, footerIdx);
-
-  return section;
-}
-
-function setCustomGuidanceInInstructions(instructions, customText) {
-  const base = instructions ?? DEFAULT_AGENT_INSTRUCTIONS;
-
-  const placeholderIdx = base.indexOf(CUSTOM_GUIDANCE_PLACEHOLDER);
-  if (placeholderIdx !== -1) {
-    return (
-      base.slice(0, placeholderIdx) +
-      customText +
-      base.slice(placeholderIdx + CUSTOM_GUIDANCE_PLACEHOLDER.length)
-    );
-  }
-
-  const headerIdx = base.indexOf(CUSTOM_GUIDANCE_HEADER);
-  if (headerIdx === -1) return base;
-
-  const start = headerIdx + CUSTOM_GUIDANCE_HEADER.length;
-  const footerIdx = base.indexOf(CUSTOM_GUIDANCE_FOOTER, start);
-  if (footerIdx === -1) {
-    return base.slice(0, start) + customText + base.slice(start);
-  }
-
-  return base.slice(0, start) + customText + base.slice(footerIdx);
-}
-
-function buildInitialAgentInstructions(initialAgent) {
-  if (initialAgent?.agentInstructions) {
-    return initialAgent.agentInstructions;
-  }
-  if (initialAgent?.customGuidance) {
-    return setCustomGuidanceInInstructions(
-      DEFAULT_AGENT_INSTRUCTIONS,
-      initialAgent.customGuidance
-    );
-  }
-  return DEFAULT_AGENT_INSTRUCTIONS;
-}
-
-function getPublishedGuidanceInstructions(initialAgent, hasBeenPublished) {
-  if (!hasBeenPublished) return null;
-  return buildInitialAgentInstructions(initialAgent);
-}
-
-function formatGuidancePublishedAt(date) {
-  const monthDay = new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-  }).format(date);
-  const time = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
-  return `${monthDay} at ${time}`;
-}
-
-const GUIDANCE_KNOWN_CONTEXT = [
-  "Ticket priority, type, subtype, and item",
-  "Thread SLA status and time to breach",
-  "Contact name and type",
-  "Company name and type",
-  "Ticket summary and conversation history",
-  "Agreement name and type",
-  "Ticket configuration",
+const RANKING_SIGNAL_DEFINITIONS = [
+  {
+    id: "priority",
+    name: "Priority",
+    description: "Higher priority tickets rank first.",
+    enabled: true,
+    value: 75,
+  },
+  {
+    id: "sla-risk",
+    name: "SLA risk",
+    description: "Tickets closer to breaching rank higher.",
+    enabled: true,
+    value: 80,
+  },
+  {
+    id: "ticket-age",
+    name: "Ticket age",
+    description: "Older tickets rank higher when signals are equal.",
+    enabled: true,
+    value: 50,
+  },
+  {
+    id: "contact-type",
+    name: "Contact type",
+    description: "Tickets where the client is waiting on a response rank higher.",
+    enabled: true,
+    value: 65,
+    options: ["Standard", "VIP", "Executive"],
+    selectedOption: "Standard",
+  },
+  {
+    id: "client-replied",
+    name: "Client replied",
+    description: "Tickets where the client is waiting on a response rank higher.",
+    enabled: true,
+    value: 70,
+  },
+  {
+    id: "agreement-type",
+    name: "Agreement type",
+    description: "Tickets matching the selected type rank higher.",
+    enabled: true,
+    value: 40,
+    options: [
+      "Block Time - One time",
+      "Block Time - Recurring",
+      "Managed Service",
+      "Monitoring",
+      "Time and materials",
+    ],
+    selectedOption: "Block Time - One time",
+  },
 ];
 
-function GuidanceInfoPopover() {
-  const [open, setOpen] = useState(false);
-  const closeTimer = useRef(null);
+function normalizeRankingSignals(initialSignals) {
+  const savedById = new Map(
+    Array.isArray(initialSignals) ? initialSignals.map((signal) => [signal.id, signal]) : []
+  );
 
-  const handleEnter = () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    setOpen(true);
-  };
-  const handleLeave = () => {
-    closeTimer.current = setTimeout(() => setOpen(false), 120);
-  };
+  return RANKING_SIGNAL_DEFINITIONS.map((definition) => {
+    const saved = savedById.get(definition.id);
+    const nextValue = Number(saved?.value);
+    const hasOptions = Array.isArray(definition.options) && definition.options.length > 0;
+    const fallbackOption = hasOptions ? definition.selectedOption ?? definition.options[0] : undefined;
+    const selectedOption =
+      hasOptions && definition.options.includes(saved?.selectedOption)
+        ? saved.selectedOption
+        : fallbackOption;
+    return {
+      ...definition,
+      enabled: typeof saved?.enabled === "boolean" ? saved.enabled : definition.enabled,
+      value: Number.isFinite(nextValue) ? Math.max(0, Math.min(100, nextValue)) : definition.value,
+      selectedOption,
+    };
+  });
+}
+
+function buildAgentInstructionsFromSignals(signals) {
+  const signalLines = signals.map((signal, index) => {
+    const status = signal.enabled ? "enabled" : "disabled";
+    const optionText = signal.options ? `, filter is ${signal.selectedOption}` : "";
+    return `${index + 1}. ${signal.name}: ${status}, weight ${signal.value}/100${optionText}.`;
+  });
+
+  return `You are a dispatch ranking agent. Rank tickets by urgency based on these configured signals, considering active signals together:
+${signalLines.join("\n")}`;
+}
+
+function SignalRowContent({
+  signal,
+  onUpdateSignal,
+  isOverlay = false,
+  dragHandleProps,
+}) {
+  const isDisabled = !signal.enabled;
+  const hasOptions = Array.isArray(signal.options) && signal.options.length > 0;
 
   return (
-    <div
-      className="relative inline-flex"
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
-      onFocus={handleEnter}
-      onBlur={handleLeave}
-    >
+    <div className="flex items-center gap-4 px-5 py-4 bg-white">
       <button
         type="button"
-        className="inline-flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-        aria-haspopup="true"
-        aria-expanded={open}
-        aria-label="What the agent already knows"
+        className="shrink-0 cursor-grab touch-none text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
+        aria-label={`Reorder ${signal.name}`}
+        {...dragHandleProps}
       >
-        <Info size={14} />
+        <span className="text-lg leading-none">⋮⋮</span>
       </button>
-      {open && (
-        <div
-          role="tooltip"
-          className="absolute left-0 top-full mt-2 w-[300px] bg-white border border-neutral-200 rounded-lg shadow-lg p-4 z-30"
-        >
-          <div className="text-sm font-medium text-neutral-900 mb-2">
-            The agent already knows:
-          </div>
-          <ul className="space-y-1.5 text-sm text-neutral-700 list-disc pl-4">
-            {GUIDANCE_KNOWN_CONTEXT.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
+
+      <Toggle
+        checked={signal.enabled}
+        onChange={(checked) => onUpdateSignal(signal.id, { enabled: checked })}
+        size="sm"
+        className="data-[state=checked]:[&>span]:translate-x-3"
+      />
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-medium text-neutral-900">{signal.name}</div>
+          {hasOptions ? (
+            <>
+              <span className="text-sm text-neutral-500">is</span>
+              <Select
+                value={signal.selectedOption}
+                options={signal.options}
+                onChange={(selectedOption) => onUpdateSignal(signal.id, { selectedOption })}
+                disabled={isDisabled || isOverlay}
+                triggerClassName="h-6 max-w-[180px] px-2 py-0 text-xs"
+              />
+            </>
+          ) : null}
         </div>
-      )}
+        <p className={`mt-0.5 text-sm ${isDisabled ? "text-neutral-400" : "text-neutral-500"}`}>
+          {signal.description}
+        </p>
+      </div>
+
+      <div className={`w-[180px] shrink-0 ${isDisabled ? "opacity-50" : ""}`}>
+        <div className="mt-1 flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <Slider
+              min={0}
+              max={100}
+              step={1}
+              value={[signal.value]}
+              disabled={isDisabled || isOverlay}
+              onValueChange={([value]) => onUpdateSignal(signal.id, { value })}
+            />
+          </div>
+          <span className="min-w-[2ch] text-left text-xs text-neutral-500">{signal.value}</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-function GuidanceSection({
-  guidanceMode,
-  onGuidanceModeChange,
-  agentInstructions,
-  onAgentInstructionsChange,
-  onUndoAgentInstructions,
-  onResetAgentInstructions,
+function SortableSignalRow({
+  signal,
+  isDropTarget,
+  isLast,
+  onUpdateSignal,
 }) {
-  const customGuidance = extractCustomGuidance(agentInstructions);
-
-  const handleCustomGuidanceChange = (value) => {
-    onAgentInstructionsChange(setCustomGuidanceInInstructions(agentInstructions, value));
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: signal.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
   };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`${!isLast ? "border-b border-neutral-200" : ""} ${isDragging ? "opacity-40" : ""} ${
+        isDropTarget ? "relative before:absolute before:left-5 before:right-5 before:top-0 before:h-0.5 before:bg-emerald-500" : ""
+      }`}
+    >
+      <SignalRowContent
+        signal={signal}
+        onUpdateSignal={onUpdateSignal}
+        dragHandleProps={{ ref: setActivatorNodeRef, ...attributes, ...listeners }}
+      />
+    </div>
+  );
+}
+
+function RankingSignalsSection({ signals, onChangeSignals }) {
+  const [activeId, setActiveId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 0,
+      },
+    })
+  );
+  const signalIds = useMemo(() => signals.map((signal) => signal.id), [signals]);
+  const activeSignal = useMemo(
+    () => signals.find((signal) => signal.id === activeId) ?? null,
+    [signals, activeId]
+  );
+
+  const updateSignal = (signalId, patch) => {
+    onChangeSignals((prev) =>
+      prev.map((signal) => (signal.id === signalId ? { ...signal, ...patch } : signal))
+    );
+  };
+
+  const handleDragStart = (event) => {
+    setActiveId(event.active.id);
+    setOverId(event.active.id);
+  };
+
+  const handleDragOver = (event) => {
+    setOverId(event.over?.id ?? null);
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    setActiveId(null);
+    setOverId(null);
+    if (!active?.id || !over?.id || active.id === over.id) return;
+    onChangeSignals((prev) => {
+      const from = prev.findIndex((signal) => signal.id === active.id);
+      const to = prev.findIndex((signal) => signal.id === over.id);
+      if (from === -1 || to === -1) return prev;
+      return arrayMove(prev, from, to);
+    });
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
+    setOverId(null);
+  };
+
   return (
     <div className="mb-10">
       <div className="mb-3">
-        <div className="flex items-center gap-1.5">
-          <h2 className="text-base font-semibold text-neutral-900">Guidance</h2>
-          <GuidanceInfoPopover />
-        </div>
+        <h2 className="text-base font-semibold text-neutral-900">Ranking signals</h2>
         <p className="text-sm text-neutral-500 mt-0.5">
-          Provide additional instructions and context for the dispatch agent when prioritizing
-          threads.
+          Control how much each signal influences ticket ranking. Drag to reorder.
         </p>
       </div>
 
-      <div className="bg-white border border-neutral-200 rounded-lg p-5">
-        <div className="inline-flex items-center rounded-lg bg-neutral-100 p-0.5 mb-4">
-          <button
-            type="button"
-            onClick={() => onGuidanceModeChange("basic")}
-            className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
-              guidanceMode === "basic"
-                ? "border-neutral-200 bg-white font-semibold text-neutral-900 shadow-sm"
-                : "border-transparent font-medium text-neutral-600 hover:text-neutral-900"
-            }`}
-          >
-            Basic
-          </button>
-          <button
-            type="button"
-            onClick={() => onGuidanceModeChange("advanced")}
-            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors ${
-              guidanceMode === "advanced"
-                ? "border-neutral-200 bg-white font-semibold text-neutral-900 shadow-sm"
-                : "border-transparent font-medium text-neutral-600 hover:text-neutral-900"
-            }`}
-          >
-            <Code size={14} />
-            Advanced
-          </button>
-        </div>
-
-        {guidanceMode === "basic" ? (
-          <div>
-            <div className="text-sm font-medium text-neutral-900 mb-2">Custom guidance</div>
-            <textarea
-              value={customGuidance}
-              onChange={(e) => handleCustomGuidanceChange(e.target.value)}
-              placeholder="Enter custom guidance for the dispatch agent (optional)..."
-              className="w-full min-h-[120px] rounded-md border border-neutral-200 px-3 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 resize-y leading-relaxed"
-            />
-          </div>
-        ) : (
-          <div>
-            <div className="flex items-center justify-between gap-4 mb-2">
-              <div className="text-sm font-medium text-neutral-900">Agent instructions</div>
-              <div className="flex shrink-0 items-center gap-3">
-                <button
-                  type="button"
-                  onClick={onUndoAgentInstructions}
-                  className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
-                >
-                  Undo last saved changes
-                </button>
-                <button
-                  type="button"
-                  onClick={onResetAgentInstructions}
-                  className="text-sm font-medium text-neutral-500 hover:text-neutral-700"
-                >
-                  Reset to default
-                </button>
+      <div className="bg-white border border-neutral-200 rounded-lg">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <SortableContext items={signalIds} strategy={verticalListSortingStrategy}>
+            {signals.map((signal, index) => (
+              <SortableSignalRow
+                key={signal.id}
+                signal={signal}
+                isLast={index === signals.length - 1}
+                isDropTarget={activeId && overId === signal.id && activeId !== signal.id}
+                onUpdateSignal={updateSignal}
+              />
+            ))}
+          </SortableContext>
+          <DragOverlay>
+            {activeSignal ? (
+              <div className="rounded-lg border border-emerald-200 bg-white/95 shadow-lg">
+                <SignalRowContent
+                  signal={activeSignal}
+                  isOverlay
+                  onUpdateSignal={updateSignal}
+                />
               </div>
-            </div>
-            <textarea
-              value={agentInstructions}
-              onChange={(e) => onAgentInstructionsChange(e.target.value)}
-              aria-label="Agent instructions"
-              style={{ fontFamily: "'IBM Plex Mono', monospace" }}
-              className="w-full min-h-[320px] rounded-md border border-neutral-200 px-3 py-2.5 text-sm text-neutral-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 resize-y leading-relaxed"
-            />
-          </div>
-        )}
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       </div>
     </div>
   );
@@ -2275,33 +2279,14 @@ function ConfigPage({
   const [limitWorkload, setLimitWorkload] = useState(false);
   const [workloadPct, setWorkloadPct] = useState(50);
 
-  // --- Guidance (Assign + Assign+Schedule)
-  const guidanceHasBeenPublished = Boolean(editingAgentId);
-  const [guidanceMode, setGuidanceMode] = useState(initialAgent?.guidanceMode ?? "basic");
-  const [publishedAgentInstructions, setPublishedAgentInstructions] = useState(() =>
-    getPublishedGuidanceInstructions(initialAgent, guidanceHasBeenPublished)
+  // --- Ranking signals (Assign + Assign+Schedule)
+  const [rankingSignals, setRankingSignals] = useState(() =>
+    normalizeRankingSignals(initialAgent?.rankingSignals)
   );
-  const [agentInstructions, setAgentInstructions] = useState(() =>
-    guidanceHasBeenPublished
-      ? buildInitialAgentInstructions(initialAgent)
-      : DEFAULT_AGENT_INSTRUCTIONS
+  const agentInstructions = useMemo(
+    () => buildAgentInstructionsFromSignals(rankingSignals),
+    [rankingSignals]
   );
-  const [guidancePublishedAt, setGuidancePublishedAt] = useState(
-    () => initialAgent?.guidancePublishedAt ?? null
-  );
-
-  const guidancePublishBaseline =
-    publishedAgentInstructions ?? DEFAULT_AGENT_INSTRUCTIONS;
-  const hasGuidanceUnsavedChanges =
-    !isRoute && agentInstructions !== guidancePublishBaseline;
-
-  const undoAgentInstructions = () => {
-    setAgentInstructions(guidancePublishBaseline);
-  };
-
-  const resetAgentInstructions = () => {
-    setAgentInstructions(DEFAULT_AGENT_INSTRUCTIONS);
-  };
 
   // --- Route mode rules
   const FIELD_META = {
@@ -2476,13 +2461,6 @@ function ConfigPage({
   };
 
   const handleSaveClick = () => {
-    const publishedAtIso = !isRoute ? new Date().toISOString() : undefined;
-
-    if (!isRoute) {
-      setPublishedAgentInstructions(agentInstructions);
-      setGuidancePublishedAt(publishedAtIso);
-    }
-
     const primaryScope = teamScopes[0];
     onSave({
       name: agentDisplayName.trim(),
@@ -2500,9 +2478,8 @@ function ConfigPage({
       fallbackStatus: "No change",
       destinations: isRoute ? rules.map((r) => r.board).filter(Boolean) : [],
       routeRules: isRoute ? rules : undefined,
-      guidanceMode: isRoute ? undefined : guidanceMode,
       agentInstructions: isRoute ? undefined : agentInstructions,
-      guidancePublishedAt: isRoute ? undefined : publishedAtIso,
+      rankingSignals: isRoute ? undefined : rankingSignals,
       statuses: isRoute ? statuses : primaryScope?.statuses ?? [],
       active,
     });
@@ -2876,16 +2853,9 @@ function ConfigPage({
           </Section>
         )}
 
-        {/* Guidance — Assign + Assign+Schedule */}
+        {/* Ranking signals — Assign + Assign+Schedule */}
         {!isRoute && (
-          <GuidanceSection
-            guidanceMode={guidanceMode}
-            onGuidanceModeChange={setGuidanceMode}
-            agentInstructions={agentInstructions}
-            onAgentInstructionsChange={setAgentInstructions}
-            onUndoAgentInstructions={undoAgentInstructions}
-            onResetAgentInstructions={resetAgentInstructions}
-          />
+          <RankingSignalsSection signals={rankingSignals} onChangeSignals={setRankingSignals} />
         )}
 
         {/* Auto-assign limit — hidden for prototype; set to true to show */}
@@ -2934,12 +2904,6 @@ function ConfigPage({
             </div>
           )}
           <div className="flex items-center gap-3">
-            {!isRoute && guidancePublishedAt && !hasGuidanceUnsavedChanges ? (
-              <span className="text-xs text-neutral-500">
-                Last published{" "}
-                {formatGuidancePublishedAt(new Date(guidancePublishedAt))}
-              </span>
-            ) : null}
             <button
               onClick={onBack}
               className="text-sm text-neutral-600 hover:text-neutral-900 px-4 py-2"
@@ -2992,6 +2956,7 @@ function ConfigPage({
                 <TestAgentPanel
                   configuredTeams={teams}
                   agentInstructions={agentInstructions}
+                  rankingSignals={rankingSignals}
                 />
               </div>
             </>

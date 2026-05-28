@@ -43,7 +43,8 @@ export default function ThreadCard({ thread, onRemove, ranking }) {
       {ranking ? (
         <div className="border-b border-teal-100 bg-teal-50 px-3.5 py-2 text-[13px] leading-snug text-teal-900">
           <span className="font-semibold">{ranking.rank}. </span>
-          {ranking.reasoning}
+          <span className="text-teal-800/65">{ranking.score} pts</span>
+          {ranking.reasoning ? ` — ${ranking.reasoning}.` : ""}
         </div>
       ) : null}
 

@@ -185,6 +185,16 @@ export const TEST_AGENT_THREADS = [
 ];
 
 export const MAX_TEST_THREADS = 10;
+const BASE_POINTS_BY_POSITION = [100, 85, 70, 55, 40, 25];
+
+export const DEFAULT_TEST_AGENT_SIGNALS = [
+  { id: "sla-risk", enabled: true, value: 80 },
+  { id: "priority", enabled: true, value: 75 },
+  { id: "client-replied", enabled: true, value: 70 },
+  { id: "contact-type", enabled: true, value: 65 },
+  { id: "ticket-age", enabled: true, value: 50 },
+  { id: "agreement-type", enabled: true, value: 40 },
+];
 
 /** Mock inbox team per thread for multi-team test agent ranking. */
 export const TEST_AGENT_THREAD_TEAMS = {
@@ -204,57 +214,86 @@ export function getTestAgentThreadTeam(threadId) {
   return TEST_AGENT_THREAD_TEAMS[threadId] ?? null;
 }
 
-/** Mock dispatch ranking applied when the user runs a test. */
-export const TEST_AGENT_RANKING = {
-  1241: {
-    rank: 1,
-    reasoning:
-      "P1 priority, device completely down. New ticket with no owner assigned.",
-  },
+const TEST_THREAD_SIGNAL_FACTORS = {
   1236: {
-    rank: 2,
-    reasoning:
-      "P1 priority, critical outage with no workaround. Oldest unresolved ticket in queue.",
-  },
-  1244: {
-    rank: 3,
-    reasoning:
-      "P2 priority, authentication blocked. Customer unable to access critical systems.",
-  },
-  1237: {
-    rank: 4,
-    reasoning:
-      "P2 priority, service down for multiple users. No response from tech in 45 minutes.",
-  },
-  1240: {
-    rank: 5,
-    reasoning:
-      "P2 priority, unanswered reply from 3 hours ago. Thread SLA breaches in 45 minutes.",
+    "sla-risk": { factor: 1, label: "SLA breaching" },
+    priority: { factor: 1, label: "P1 priority" },
+    "client-replied": { factor: 0.6, label: "No client reply" },
+    "contact-type": { factor: 1, label: "VIP contact" },
+    "ticket-age": { factor: 0.35, label: "45m old ticket" },
+    "agreement-type": { factor: 1, label: "Managed Service agreement" },
   },
   1234: {
-    rank: 6,
-    reasoning:
-      "P3 priority, VIP contact with an unanswered reply. Thread SLA breaches in 30 minutes.",
+    "sla-risk": { factor: 0.85, label: "SLA at risk" },
+    priority: { factor: 0.5, label: "P3 priority" },
+    "client-replied": { factor: 1, label: "Unanswered client reply" },
+    "contact-type": { factor: 1, label: "VIP contact" },
+    "ticket-age": { factor: 0.25, label: "30m old ticket" },
+    "agreement-type": { factor: 1, label: "Managed Service agreement" },
+  },
+  1240: {
+    "sla-risk": { factor: 0, label: "No SLA risk" },
+    priority: { factor: 0.75, label: "P2 priority" },
+    "client-replied": { factor: 1, label: "Unanswered client reply" },
+    "contact-type": { factor: 0.45, label: "Standard contact" },
+    "ticket-age": { factor: 0.75, label: "3h old ticket" },
+    "agreement-type": { factor: 0.6, label: "Monitoring agreement" },
+  },
+  1237: {
+    "sla-risk": { factor: 0, label: "No SLA risk" },
+    priority: { factor: 0.75, label: "P2 priority" },
+    "client-replied": { factor: 0.9, label: "No client reply" },
+    "contact-type": { factor: 0.45, label: "Standard contact" },
+    "ticket-age": { factor: 0.45, label: "1h old ticket" },
+    "agreement-type": { factor: 0.4, label: "Time and materials agreement" },
   },
   1238: {
-    rank: 7,
-    reasoning:
-      "P3 priority, follow-up on an existing ticket. Customer waiting 2 hours with no response.",
-  },
-  1243: {
-    rank: 8,
-    reasoning:
-      "P3 priority, peripheral offline after update. No customer reply in 1 hour.",
+    "sla-risk": { factor: 0, label: "No SLA risk" },
+    priority: { factor: 0.5, label: "P3 priority" },
+    "client-replied": { factor: 1, label: "Unanswered client reply" },
+    "contact-type": { factor: 0.45, label: "Standard contact" },
+    "ticket-age": { factor: 0.6, label: "2h old ticket" },
+    "agreement-type": { factor: 0.4, label: "Time and materials agreement" },
   },
   1239: {
-    rank: 9,
-    reasoning:
-      "P4 priority, standard workaround available. No SLA risk detected.",
+    "sla-risk": { factor: 0, label: "No SLA risk" },
+    priority: { factor: 0.25, label: "P4 priority" },
+    "client-replied": { factor: 0.9, label: "No client reply" },
+    "contact-type": { factor: 0.45, label: "Standard contact" },
+    "ticket-age": { factor: 0.2, label: "15m old ticket" },
+    "agreement-type": { factor: 0.4, label: "Time and materials agreement" },
+  },
+  1241: {
+    "sla-risk": { factor: 0.9, label: "SLA at risk" },
+    priority: { factor: 1, label: "P1 priority" },
+    "client-replied": { factor: 0.85, label: "No client reply" },
+    "contact-type": { factor: 0.9, label: "Executive contact" },
+    "ticket-age": { factor: 0.3, label: "20m old ticket" },
+    "agreement-type": { factor: 0.8, label: "Managed Service agreement" },
   },
   1242: {
-    rank: 10,
-    reasoning:
-      "P4 priority, intermittent issue with low business impact. No SLA risk.",
+    "sla-risk": { factor: 0, label: "No SLA risk" },
+    priority: { factor: 0.25, label: "P4 priority" },
+    "client-replied": { factor: 0.65, label: "Client replied recently" },
+    "contact-type": { factor: 0.45, label: "Standard contact" },
+    "ticket-age": { factor: 0.85, label: "4h old ticket" },
+    "agreement-type": { factor: 0.4, label: "Time and materials agreement" },
+  },
+  1243: {
+    "sla-risk": { factor: 0.2, label: "SLA stable" },
+    priority: { factor: 0.5, label: "P3 priority" },
+    "client-replied": { factor: 0.75, label: "No client reply" },
+    "contact-type": { factor: 0.45, label: "Standard contact" },
+    "ticket-age": { factor: 0.45, label: "1h old ticket" },
+    "agreement-type": { factor: 0.4, label: "Time and materials agreement" },
+  },
+  1244: {
+    "sla-risk": { factor: 0.55, label: "SLA at risk" },
+    priority: { factor: 0.75, label: "P2 priority" },
+    "client-replied": { factor: 0.8, label: "No client reply" },
+    "contact-type": { factor: 0.55, label: "VIP contact" },
+    "ticket-age": { factor: 0.4, label: "50m old ticket" },
+    "agreement-type": { factor: 0.7, label: "Managed Service agreement" },
   },
 };
 
@@ -264,16 +303,90 @@ export function getTestAgentThread(id) {
   return threadById.get(id);
 }
 
-export function sortThreadsByRanking(threadIds) {
+function normalizeSignals(rankingSignals) {
+  const savedById = new Map(
+    Array.isArray(rankingSignals)
+      ? rankingSignals.map((signal) => [signal.id, signal])
+      : []
+  );
+  return DEFAULT_TEST_AGENT_SIGNALS.map((signal) => {
+    const saved = savedById.get(signal.id);
+    const value = Number(saved?.value);
+    return {
+      ...signal,
+      enabled: typeof saved?.enabled === "boolean" ? saved.enabled : signal.enabled,
+      value: Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : signal.value,
+    };
+  });
+}
+
+export function computeTestAgentRanking(threadIds, rankingSignals) {
+  const normalizedSignals = normalizeSignals(rankingSignals);
+  const scored = threadIds.map((threadId, originalIndex) => {
+    const factors = TEST_THREAD_SIGNAL_FACTORS[threadId] ?? {};
+    const contributions = normalizedSignals.map((signal, index) => {
+      const basePoints = BASE_POINTS_BY_POSITION[index] ?? 0;
+      if (!signal.enabled) {
+        return { ...signal, basePoints, points: 0, label: null };
+      }
+      const signalFactor = factors[signal.id]?.factor ?? 0;
+      const rawPoints = (signal.value / 100) * basePoints * signalFactor;
+      return {
+        ...signal,
+        basePoints,
+        points: rawPoints,
+        label: factors[signal.id]?.label ?? null,
+      };
+    });
+
+    const score = Math.round(
+      contributions.reduce((sum, contribution) => sum + contribution.points, 0)
+    );
+    const reasoning = contributions
+      .filter((contribution) => contribution.points > 0 && contribution.label)
+      .sort((a, b) => b.points - a.points)
+      .slice(0, 3)
+      .map((contribution) => contribution.label)
+      .join(", ");
+
+    return {
+      threadId,
+      score,
+      reasoning,
+      originalIndex,
+    };
+  });
+
+  const ranked = scored.sort((a, b) => {
+    if (a.score !== b.score) return b.score - a.score;
+    return a.originalIndex - b.originalIndex;
+  });
+
+  return ranked.reduce((acc, item, index) => {
+    acc[item.threadId] = {
+      rank: index + 1,
+      score: item.score,
+      reasoning: item.reasoning,
+    };
+    return acc;
+  }, {});
+}
+
+export function sortThreadsByRanking(threadIds, rankingSignals) {
+  const rankingById = computeTestAgentRanking(threadIds, rankingSignals);
   return [...threadIds].sort((a, b) => {
-    const rankA = TEST_AGENT_RANKING[a]?.rank ?? Number.MAX_SAFE_INTEGER;
-    const rankB = TEST_AGENT_RANKING[b]?.rank ?? Number.MAX_SAFE_INTEGER;
+    const rankA = rankingById[a]?.rank ?? Number.MAX_SAFE_INTEGER;
+    const rankB = rankingById[b]?.rank ?? Number.MAX_SAFE_INTEGER;
     if (rankA !== rankB) return rankA - rankB;
     return threadIds.indexOf(a) - threadIds.indexOf(b);
   });
 }
 
-export function groupThreadIdsByTeam(threadIds, teamOrder, { sortByRanking = true } = {}) {
+export function groupThreadIdsByTeam(
+  threadIds,
+  teamOrder,
+  { sortByRanking = true, rankingSignals } = {}
+) {
   const byTeam = new Map(teamOrder.map((team) => [team, []]));
   threadIds.forEach((id) => {
     const team = getTestAgentThreadTeam(id);
@@ -286,7 +399,7 @@ export function groupThreadIdsByTeam(threadIds, teamOrder, { sortByRanking = tru
       const ids = byTeam.get(team) ?? [];
       return {
         team,
-        threadIds: sortByRanking ? sortThreadsByRanking(ids) : ids,
+        threadIds: sortByRanking ? sortThreadsByRanking(ids, rankingSignals) : ids,
       };
     })
     .filter((section) => section.threadIds.length > 0);

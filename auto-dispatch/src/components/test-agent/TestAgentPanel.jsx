@@ -3,7 +3,6 @@ import {
   Check,
   ListOrdered,
   Search,
-  Sparkles,
   ThumbsDown,
   ThumbsUp,
   X,
@@ -12,7 +11,7 @@ import { TeamLabel } from "../TeamIcon";
 import ThreadCard from "../ThreadCard";
 import {
   MAX_TEST_THREADS,
-  TEST_AGENT_RANKING,
+  computeTestAgentRanking,
   TEST_AGENT_THREADS,
   getTestAgentThread,
   groupThreadIdsByTeam,
@@ -142,15 +141,11 @@ function TestAgentFeedbackModal({
   );
 }
 
-function ThreadCardList({ threads, hasRunTest, onRemoveThread }) {
+function ThreadCardList({ threads, hasRunTest, rankingById, onRemoveThread }) {
   return (
     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-      {threads.map((thread, index) => {
-        const baseRanking = TEST_AGENT_RANKING[thread.id];
-        const ranking =
-          hasRunTest && baseRanking
-            ? { rank: index + 1, reasoning: baseRanking.reasoning }
-            : undefined;
+      {threads.map((thread) => {
+        const ranking = hasRunTest ? rankingById?.[thread.id] : undefined;
 
         return (
           <ThreadCard
@@ -168,6 +163,7 @@ function ThreadCardList({ threads, hasRunTest, onRemoveThread }) {
 export default function TestAgentPanel({
   configuredTeams = [],
   agentInstructions = "",
+  rankingSignals = [],
 }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -196,11 +192,18 @@ export default function TestAgentPanel({
   const canRunTest = selectedIds.length >= 2;
 
   const groupByTeam = configuredTeams.length >= 2;
+  const rankingById = useMemo(
+    () =>
+      hasRunTest
+        ? computeTestAgentRanking(selectedIds, rankingSignals)
+        : {},
+    [hasRunTest, rankingSignals, selectedIds]
+  );
 
   const displayedIds = useMemo(() => {
     if (!hasRunTest || groupByTeam) return selectedIds;
-    return sortThreadsByRanking(selectedIds);
-  }, [selectedIds, hasRunTest, groupByTeam]);
+    return sortThreadsByRanking(selectedIds, rankingSignals);
+  }, [selectedIds, hasRunTest, groupByTeam, rankingSignals]);
 
   const displayedThreads = useMemo(
     () => displayedIds.map((id) => getTestAgentThread(id)).filter(Boolean),
@@ -211,13 +214,14 @@ export default function TestAgentPanel({
     if (!groupByTeam) return null;
     return groupThreadIdsByTeam(selectedIds, configuredTeams, {
       sortByRanking: hasRunTest,
+      rankingSignals,
     }).map((section) => ({
       team: section.team,
       threads: section.threadIds
         .map((id) => getTestAgentThread(id))
         .filter(Boolean),
     }));
-  }, [configuredTeams, groupByTeam, hasRunTest, selectedIds]);
+  }, [configuredTeams, groupByTeam, hasRunTest, rankingSignals, selectedIds]);
 
   const filteredThreads = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -484,7 +488,6 @@ export default function TestAgentPanel({
         <div className="mb-3 flex items-center justify-between gap-3">
           {hasRunTest ? (
             <div className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-neutral-900">
-              <Sparkles size={14} className="shrink-0 text-emerald-500" />
               <span className="truncate">Dispatch Agent&apos;s ranking</span>
             </div>
           ) : (
@@ -533,6 +536,7 @@ export default function TestAgentPanel({
                   <ThreadCardList
                     threads={section.threads}
                     hasRunTest={hasRunTest}
+                    rankingById={rankingById}
                     onRemoveThread={handleRemoveThread}
                   />
                 </section>
@@ -542,6 +546,7 @@ export default function TestAgentPanel({
             <ThreadCardList
               threads={displayedThreads}
               hasRunTest={hasRunTest}
+              rankingById={rankingById}
               onRemoveThread={handleRemoveThread}
             />
           )

@@ -65,6 +65,7 @@ import {
   MoreHorizontal,
   Package,
   Pencil,
+  Play,
   Phone,
   Plug,
   Plus,
@@ -3166,13 +3167,14 @@ function ConfigPage({
             type="button"
             onClick={() => setTestPanelOpen((open) => !open)}
             aria-expanded={testPanelOpen}
-            className={`inline-flex items-center rounded-md border px-4 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center gap-1.5 rounded-md border px-4 py-1.5 text-sm font-medium transition-colors ${
               testPanelOpen
                 ? "border-neutral-300 bg-neutral-100 text-neutral-900"
                 : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
             }`}
           >
-            Test agent
+            <Play size={14} className="text-neutral-500" aria-hidden />
+            Test run
           </button>
           <Switch checked={active} onCheckedChange={setActive} />
         </div>
@@ -3211,21 +3213,21 @@ function ConfigPage({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDispatchMode("Queue-based")}
+                  onClick={() => setDispatchMode("Self-serve")}
                   className={`flex w-full items-center gap-3 rounded-lg border px-4 py-4 text-left transition-colors ${
-                    dispatchMode === "Queue-based"
+                    dispatchMode === "Self-serve"
                       ? "border-teal-500"
                       : "border-neutral-200 hover:border-neutral-300"
                   }`}
                 >
                   <ListOrdered size={18} className="shrink-0 text-neutral-400" strokeWidth={1.75} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-neutral-900">Queue-based</div>
+                    <div className="text-sm font-semibold text-neutral-900">Self-serve</div>
                     <p className="mt-0.5 text-sm text-neutral-500">
                       Techs request threads when ready
                     </p>
                   </div>
-                  {dispatchMode === "Queue-based" ? (
+                  {dispatchMode === "Self-serve" ? (
                     <Check size={16} className="shrink-0 text-teal-600" strokeWidth={2.5} />
                   ) : null}
                 </button>
@@ -3353,10 +3355,10 @@ function ConfigPage({
           <div className="mb-10">
             <div className="mb-3">
               <h2 className="text-base font-semibold text-neutral-900">
-                {dispatchMode === "Queue-based" ? "Scope" : "Agent scope"}
+                {dispatchMode === "Self-serve" ? "Scope" : "Agent scope"}
               </h2>
               <p className="text-sm text-neutral-500 mt-0.5">
-                {dispatchMode === "Queue-based"
+                {dispatchMode === "Self-serve"
                   ? "Use multiple sections when teams share the same ranking logic."
                   : "Use multiple sections when teams share the same dispatch logic."}
               </p>
@@ -3640,8 +3642,8 @@ function ConfigPage({
           </>
         )}
 
-        {/* Thread scoring — Queue-based only */}
-        {!isRoute && dispatchMode === "Queue-based" && (
+        {/* Thread scoring — Self-serve only */}
+        {!isRoute && dispatchMode === "Self-serve" && (
           <RankingSignalsSection signals={rankingSignals} onChangeSignals={setRankingSignals} />
         )}
 

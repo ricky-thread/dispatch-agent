@@ -31,10 +31,8 @@ import {
 } from "@/components/ui/tooltip";
 import FlowsPage from "./components/flows/FlowsPage";
 import SlasPage from "./components/slas/SlasPage";
-import TeamIcon from "./components/TeamIcon";
 import TestAgentPanel from "./components/test-agent/TestAgentPanel";
 import {
-  AlertTriangle,
   ArrowLeft,
   Activity,
   Briefcase,
@@ -78,9 +76,6 @@ import {
 
 import {
   BOARDS,
-  TEAMS,
-  TEAM_VIEWS,
-  SHARED_TICKET_VIEWS,
   STATUSES,
   HOUR_OPTIONS,
   ROUTE_CONDITION_FIELDS,
@@ -89,19 +84,40 @@ import {
 
 /** Status menus: default dropdown height + 200px */
 const STATUS_MENU_MAX_HEIGHT = "min(46.5rem, calc(100vh - 6rem))";
-const STATUS_SELECT_MENU_MAX_HEIGHT = "min(28.5rem, calc(100vh - 6rem))";
-const FALLBACK_STATUS_OPTIONS = ["No change", ...STATUSES];
-
-const TEAM_MEMBERS = {
-  "Team Alpha": ["Chloe Hayes", "Marcus Webb", "Priya Nair", "Jon Ortiz"],
-  "Team Beta": ["Elena Park", "Sam Rivera", "Tara Wells", "Gabe King"],
-  "Team Charlie": ["Dana Fox", "Iris Cole", "Theo Lane", "Quinn Marsh"],
-  "Team Red": ["Avery Reed", "Mina Patel", "Noah Brooks", "Jules Hart"],
-  "Team Blue": ["Leah Kim", "Owen Price", "Rosa Diaz", "Eli Turner"],
-  "Team Green": ["Maya Singh", "Luca Romano", "Ivy Chen", "Max Foster"],
-  "Network Ops": ["Nina Walsh", "Caleb Young", "Priya Shah", "Jon Park"],
-  Procurement: ["Sam Rivera", "Tara Wells", "Gabe King", "Mia Scott"],
+const SCOPE_TEAM_OPTIONS = ["Team Red", "Team Blue", "Team Green", "Network Ops", "Procurement"];
+const SCOPE_BOARD_OPTIONS = ["Help Desk", "Network", "Projects", "Voice"];
+const SCOPE_STATUS_OPTIONS = [
+  "New",
+  "In Progress",
+  "Waiting Client Response",
+  "On Hold",
+  "Scheduled",
+];
+const SCOPE_FILTER_METADATA = {
+  "Company type": {
+    icon: Building2,
+    values: ["Managed Service", "Break Fix", "Internal", "Government"],
+  },
+  "Contact type": {
+    icon: Users,
+    values: ["Standard", "VIP", "Executive"],
+  },
+  "Agreement type": {
+    icon: FileText,
+    values: [
+      "Block Time - One time",
+      "Block Time - Recurring",
+      "Managed Service",
+      "Monitoring",
+      "Time and materials",
+    ],
+  },
+  Territory: {
+    icon: Globe,
+    values: ["North", "South", "East", "West"],
+  },
 };
+const SCOPE_FILTER_OPTIONS = Object.keys(SCOPE_FILTER_METADATA);
 
 const normalizeSelections = (value) => {
   if (Array.isArray(value)) return value.filter(Boolean);
@@ -1055,42 +1071,33 @@ function isTeamScopeConfigured(scope) {
   return Boolean(scope.team && scope.view);
 }
 
-/** Demo: third team added via "Add another team" pre-fills an overlapping scope. */
-const DEMO_THIRD_TEAM_SCOPE = {
-  team: "Team Charlie",
-  view: "🧵 Needs dispatch view (Alpha)",
-  expanded: true,
-};
-
-function viewLabelForOverlapWarning(view) {
-  return view.replace(/^🧵\s*/, "");
-}
-
-function getScopeViewOverlap(scope, teamScopes) {
-  if (!scope.view || !SHARED_TICKET_VIEWS.has(scope.view)) return null;
-  const conflict = teamScopes.find(
-    (other) =>
-      other.id !== scope.id &&
-      other.view === scope.view &&
-      other.team &&
-      other.team !== scope.team
-  );
-  if (!conflict) return null;
-  return { view: conflict.view, team: conflict.team };
+function createTeamCondition(initial = {}) {
+  const fallbackValue =
+    typeof initial.value === "string" && initial.value.trim()
+      ? [initial.value.trim()]
+      : [];
+  return {
+    id: initial.id ?? newConditionId(),
+    filterType: initial.filterType ?? initial.field ?? SCOPE_FILTER_OPTIONS[0],
+    operator: initial.operator ?? "is",
+    valueIds: Array.isArray(initial.valueIds) ? initial.valueIds : fallbackValue,
+  };
 }
 
 function createTeamScope(id, initial = {}) {
   const team = initial.team ?? "";
-  const view = initial.view ?? "";
+  const view = initial.view ?? initial.board ?? "";
   const configured = isTeamScopeConfigured({ team, view });
+  const conditions = Array.isArray(initial.conditions)
+    ? initial.conditions.map((condition) => createTeamCondition(condition))
+    : [];
   return {
     id,
     team,
     view,
-    excludeTechs: initial.excludeTechs ?? [],
-    excludeTechsEnabled:
-      initial.excludeTechsEnabled ?? Boolean((initial.excludeTechs ?? []).length > 0),
-    fallbackStatus: initial.fallbackStatus ?? "No change",
+    conditions,
+    statusMode: initial.statusMode ?? "Include only",
+    statuses: initial.statuses ?? [],
     skipFlowAssignedTickets: initial.skipFlowAssignedTickets ?? false,
     expanded: initial.expanded ?? !configured,
   };
@@ -1098,31 +1105,113 @@ function createTeamScope(id, initial = {}) {
 
 function AgentScopeTeamCard({
   scope,
-  teamScopes,
-  teamClaimedByAgent,
-  selectedTeamIds,
   onUpdate,
   onRemove,
-  canRemove,
 }) {
-  const viewOptions = scope.team ? TEAM_VIEWS[scope.team] || [] : [];
-  const viewOverlap = getScopeViewOverlap(scope, teamScopes);
-  const availableMembers = scope.team ? TEAM_MEMBERS[scope.team] || [] : [];
-  const headerTeamLabel = scope.team || "Inbox Team";
-  const headerViewLabel = scope.view || "View";
-  const headerMuted = !scope.team && !scope.view;
-
-  const teamClaims = { ...teamClaimedByAgent };
-  if (scope.team) delete teamClaims[scope.team];
-  selectedTeamIds.forEach((teamName) => {
-    if (teamName && teamName !== scope.team) {
-      teamClaims[teamName] = teamClaims[teamName] || "another team on this agent";
+  const conditionEditorRef = useRef(null);
+  const [openConditionMenu, setOpenConditionMenu] = useState(null);
+  const [pendingCondition, setPendingCondition] = useState(null);
+  const headerTeamLabel = scope.team || "Select team";
+  const pendingValueOptions = pendingCondition
+    ? SCOPE_FILTER_METADATA[pendingCondition.filterType]?.values || []
+    : [];
+  const activeFilterTypes = new Set(scope.conditions.map((condition) => condition.filterType));
+  if (pendingCondition?.filterType) {
+    activeFilterTypes.add(pendingCondition.filterType);
+  }
+  const availableFilterOptions = SCOPE_FILTER_OPTIONS.filter(
+    (filterType) => !activeFilterTypes.has(filterType)
+  );
+  const startConditionFromFilter = (filterType) => {
+    const condition = createTeamCondition({ filterType });
+    setPendingCondition(condition);
+    setOpenConditionMenu({ kind: "value", conditionId: condition.id });
+  };
+  const updateCondition = (conditionId, patch) => {
+    if (pendingCondition?.id === conditionId) {
+      setPendingCondition((prev) => (prev ? { ...prev, ...patch } : prev));
+      return;
     }
-  });
-  const availableTeams = TEAMS.filter((team) => !teamClaims[team]);
+    onUpdate({
+      conditions: scope.conditions.map((condition) =>
+        condition.id === conditionId ? { ...condition, ...patch } : condition
+      ),
+    });
+  };
+  const removeCondition = (conditionId) => {
+    if (pendingCondition?.id === conditionId) {
+      setPendingCondition(null);
+      setOpenConditionMenu((prev) =>
+        prev?.kind === "value" && prev.conditionId === conditionId ? null : prev
+      );
+      return;
+    }
+    onUpdate({
+      conditions: scope.conditions.filter((condition) => condition.id !== conditionId),
+    });
+  };
+  const toggleConditionOperator = (condition) =>
+    updateCondition(condition.id, {
+      operator: condition.operator === "is" ? "is not" : "is",
+    });
+  const toggleConditionValue = (condition, value) => {
+    const current = condition.valueIds || [];
+    const next = current.includes(value)
+      ? current.filter((entry) => entry !== value)
+      : [...current, value];
+    updateCondition(condition.id, { valueIds: next });
+  };
+  const conditionValueLabel = (condition) => {
+    const values = condition.valueIds || [];
+    if (values.length === 0) return "...";
+    if (values.length === 1) return values[0];
+    return `${values.length} selected`;
+  };
+
+  useEffect(() => {
+    if (!openConditionMenu) return undefined;
+    const handleMouseDown = (event) => {
+      if (!conditionEditorRef.current) return;
+      if (conditionEditorRef.current.contains(event.target)) return;
+      if (
+        openConditionMenu.kind === "value" &&
+        pendingCondition &&
+        openConditionMenu.conditionId === pendingCondition.id
+      ) {
+        const pendingValues = pendingCondition.valueIds || [];
+        if (pendingValues.length > 0) {
+          onUpdate({ conditions: [...scope.conditions, pendingCondition] });
+        }
+        setPendingCondition(null);
+      }
+      setOpenConditionMenu(null);
+    };
+    const handleEsc = (event) => {
+      if (event.key === "Escape") {
+        if (
+          openConditionMenu.kind === "value" &&
+          pendingCondition &&
+          openConditionMenu.conditionId === pendingCondition.id
+        ) {
+          const pendingValues = pendingCondition.valueIds || [];
+          if (pendingValues.length > 0) {
+            onUpdate({ conditions: [...scope.conditions, pendingCondition] });
+          }
+          setPendingCondition(null);
+        }
+        setOpenConditionMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleEsc);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [openConditionMenu, onUpdate, pendingCondition, scope.conditions]);
 
   return (
-    <div className="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+    <div className="bg-white border border-neutral-200 rounded-lg overflow-visible">
       <button
         type="button"
         onClick={() => onUpdate({ expanded: !scope.expanded })}
@@ -1130,33 +1219,22 @@ function AgentScopeTeamCard({
         aria-expanded={scope.expanded}
       >
         <span
-          className={`flex min-w-0 items-center gap-1.5 truncate text-sm ${
-            headerMuted ? "text-neutral-400" : "text-neutral-800"
-          }`}
+          className={`min-w-0 truncate text-sm ${scope.team ? "font-medium text-neutral-900" : "text-neutral-400"}`}
         >
-          {scope.team ? <TeamIcon team={scope.team} /> : null}
-          <span className={scope.team ? "font-medium text-neutral-900" : ""}>
-            {headerTeamLabel}
-          </span>
-          <span className="text-neutral-400 mx-1.5" aria-hidden>
-            ·
-          </span>
-          <span className={scope.view ? "text-neutral-700" : ""}>{headerViewLabel}</span>
+          {headerTeamLabel}
         </span>
         <span className="flex shrink-0 items-center gap-[4px]">
-          {canRemove ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove();
-              }}
-              className="p-1.5 rounded-md text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-              aria-label="Remove team"
-            >
-              <Trash2 size={15} />
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            className="p-1.5 rounded-md text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+            aria-label="Remove team"
+          >
+            <Trash2 size={15} />
+          </button>
           {scope.expanded ? (
             <ChevronUp size={16} className="text-neutral-400" aria-hidden />
           ) : (
@@ -1168,104 +1246,198 @@ function AgentScopeTeamCard({
       {scope.expanded ? (
         <div className="border-t border-neutral-100">
           <Row
-            label="Dispatch to"
-            subcopy="Select the Inbox Team to dispatch tickets to."
+            label="Inbox Team"
+            subcopy="Select the team tickets will be dispatched to."
           >
             <Select
               value={scope.team}
-              options={availableTeams}
-              onChange={(team) =>
-                onUpdate({
-                  team,
-                  view: "",
-                  excludeTechs: [],
-                })
-              }
+              options={SCOPE_TEAM_OPTIONS}
+              onChange={(team) => onUpdate({ team })}
               placeholder="Select team"
-              searchable
-              searchPlaceholder="Search teams..."
-              dropdownClassName="w-[320px]"
+              dropdownClassName="w-[220px]"
             />
           </Row>
+          <div className="border-b border-neutral-100 px-5 py-3">
+            <div
+              ref={conditionEditorRef}
+              className="relative flex flex-wrap items-center gap-2"
+            >
+              {scope.conditions.map((condition) => {
+                const filterMeta = SCOPE_FILTER_METADATA[condition.filterType];
+                const FilterIcon = filterMeta?.icon || FileText;
+                const valueOptions = filterMeta?.values || [];
+                const valueMenuOpen =
+                  openConditionMenu?.kind === "value" &&
+                  openConditionMenu.conditionId === condition.id;
+                return (
+                  <div
+                    key={condition.id}
+                    className="relative inline-flex h-6 items-center rounded-md border border-neutral-300 bg-white text-[12px] text-neutral-800"
+                  >
+                    <span className="inline-flex items-center gap-1 border-r border-neutral-300 px-2 py-[3px]">
+                      <FilterIcon size={12} className="text-neutral-500" />
+                      <span>{condition.filterType}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleConditionOperator(condition)}
+                      className="border-r border-neutral-300 px-2 py-[3px] text-neutral-700 transition-colors hover:bg-neutral-50"
+                    >
+                      {condition.operator}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenConditionMenu((prev) =>
+                          prev?.kind === "value" && prev.conditionId === condition.id
+                            ? null
+                            : { kind: "value", conditionId: condition.id }
+                        )
+                      }
+                      className="max-w-[150px] truncate border-r border-neutral-300 px-2 py-[3px] text-left text-neutral-900 transition-colors hover:bg-neutral-50"
+                    >
+                      {conditionValueLabel(condition)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeCondition(condition.id)}
+                      className="px-1.5 text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-700"
+                      aria-label="Remove condition"
+                    >
+                      <X size={12} />
+                    </button>
+
+                    {valueMenuOpen ? (
+                      <div className="absolute left-0 top-full z-[120] mt-1 w-[320px] max-h-[260px] overflow-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+                        {valueOptions.map((value) => {
+                          const checked = (condition.valueIds || []).includes(value);
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => toggleConditionValue(condition, value)}
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] text-neutral-900 hover:bg-neutral-50"
+                            >
+                              <span
+                                className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
+                                  checked
+                                    ? "border-emerald-500 bg-emerald-500"
+                                    : "border-neutral-300 bg-white"
+                                }`}
+                              >
+                                {checked ? (
+                                  <Check size={10} className="text-white" strokeWidth={3} />
+                                ) : null}
+                              </span>
+                              <span>{value}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+
+              <div className="relative">
+                {availableFilterOptions.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenConditionMenu((prev) =>
+                        prev?.kind === "field" ? null : { kind: "field" }
+                      )
+                    }
+                    className="inline-flex h-6 items-center gap-1 rounded-md border border-emerald-500 px-2 py-[3px] text-[12px] font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
+                  >
+                    <Plus size={12} />
+                    Add condition
+                  </button>
+                ) : null}
+                {openConditionMenu?.kind === "field" && availableFilterOptions.length > 0 ? (
+                  <div className="absolute left-0 top-full z-[120] mt-1 w-[320px] rounded-xl border border-neutral-200 bg-white p-2 shadow-xl">
+                    {availableFilterOptions.map((filterType) => {
+                      const FilterIcon = SCOPE_FILTER_METADATA[filterType]?.icon || FileText;
+                      return (
+                        <button
+                          key={filterType}
+                          type="button"
+                          onClick={() => {
+                            startConditionFromFilter(filterType);
+                          }}
+                          className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm text-neutral-900 hover:bg-neutral-50"
+                        >
+                          <FilterIcon size={16} className="text-neutral-500" />
+                          <span>{filterType}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {openConditionMenu?.kind === "value" &&
+                pendingCondition &&
+                openConditionMenu.conditionId === pendingCondition.id ? (
+                  <div className="absolute left-0 top-full z-[120] mt-1 w-[320px] max-h-[260px] overflow-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+                    {pendingValueOptions.map((value) => {
+                      const checked = (pendingCondition.valueIds || []).includes(value);
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => toggleConditionValue(pendingCondition, value)}
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] text-neutral-900 hover:bg-neutral-50"
+                        >
+                          <span
+                            className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
+                              checked
+                                ? "border-emerald-500 bg-emerald-500"
+                                : "border-neutral-300 bg-white"
+                            }`}
+                          >
+                            {checked ? (
+                              <Check size={10} className="text-white" strokeWidth={3} />
+                            ) : null}
+                          </span>
+                          <span>{value}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
           <Row
             label="Dispatch from"
-            subcopy="Select the Inbox Team's view to dispatch tickets from."
+            subcopy="Select the board to dispatch tickets from."
           >
             <Select
               value={scope.view}
-              options={viewOptions}
+              options={SCOPE_BOARD_OPTIONS}
               onChange={(view) => onUpdate({ view })}
-              placeholder="Select view"
-              searchable
-              searchPlaceholder="Search views..."
-              dropdownClassName="w-[320px]"
+              placeholder="Select board"
+              dropdownClassName="w-[220px]"
             />
           </Row>
-          {viewOverlap ? (
-            <div className="border-b border-neutral-100 px-5 pb-4">
-              <div
-                className="flex gap-2.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm leading-snug text-amber-950"
-                role="alert"
-              >
-                <AlertTriangle
-                  size={16}
-                  className="mt-0.5 shrink-0 text-amber-600"
-                  aria-hidden
-                />
-                <p>
-                  This view shares tickets with{" "}
-                  <span className="font-medium">
-                    {viewLabelForOverlapWarning(viewOverlap.view)}
-                  </span>{" "}
-                  (
-                  <span className="font-medium">{viewOverlap.team}</span>
-                  ). Update your view filters so each team&apos;s tickets don&apos;t
-                  overlap.
-                </p>
-              </div>
-            </div>
-          ) : null}
-          <div className="border-b border-neutral-100">
-            <div className="flex items-center justify-between gap-6 px-5 py-4">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-neutral-900">Exclude techs</div>
-                <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                  Selected members won&apos;t receive tickets from this agent.
-                </p>
-              </div>
-              <div className="shrink-0" onMouseDown={(e) => e.stopPropagation()}>
-                <Toggle
-                  checked={scope.excludeTechsEnabled}
-                  onChange={(excludeTechsEnabled) => onUpdate({ excludeTechsEnabled })}
-                  size="sm"
-                />
-              </div>
-            </div>
-            {scope.excludeTechsEnabled ? (
-              <div className="px-5 pb-4">
-                <ExcludeTechsCombo
-                  values={scope.excludeTechs}
-                  onChange={(excludeTechs) => onUpdate({ excludeTechs })}
-                  options={availableMembers}
-                  disabled={!scope.team}
-                  disabledMessage="Select a team first"
-                />
-              </div>
-            ) : null}
-          </div>
           <Row
-            label="Fallback status"
-            subcopy="The status set if no tech is available"
+            label="Status"
+            subcopy="Select status(es) the agent should focus on."
           >
-            <Select
-              value={scope.fallbackStatus}
-              options={FALLBACK_STATUS_OPTIONS}
-              onChange={(fallbackStatus) => onUpdate({ fallbackStatus })}
-              searchable
-              searchPlaceholder="Search statuses..."
-              dropdownClassName="w-[280px]"
-              menuMaxHeight={STATUS_SELECT_MENU_MAX_HEIGHT}
-            />
+            <div className="flex items-center gap-2">
+              <Select
+                value={scope.statusMode}
+                options={["Include only", "Exclude"]}
+                onChange={(statusMode) => onUpdate({ statusMode })}
+                dropdownClassName="w-[150px]"
+              />
+              <MultiSelect
+                values={scope.statuses}
+                options={SCOPE_STATUS_OPTIONS}
+                onChange={(statuses) => onUpdate({ statuses })}
+                placeholder="Select status"
+                dropdownClassName="w-[220px]"
+              />
+            </div>
           </Row>
           <Row
             label="Skip tickets assigned by Flows"
@@ -2059,14 +2231,25 @@ function ConfigPage({
   const [teamScopes, setTeamScopes] = useState(() => {
     const initialTeams = normalizeSelections(initialAgent?.teams ?? initialAgent?.team);
     const initialViews = normalizeSelections(initialAgent?.boards ?? initialAgent?.board);
+    const initialScopeRecords = Array.isArray(initialAgent?.teamScopes)
+      ? initialAgent.teamScopes
+      : [];
+    if (initialScopeRecords.length > 0) {
+      return initialScopeRecords.map((scope, index) =>
+        createTeamScope(index + 1, {
+          ...scope,
+          team: scope.team ?? initialTeams[index] ?? "",
+          view: scope.view ?? scope.board ?? initialViews[index] ?? "",
+        })
+      );
+    }
     if (initialTeams.length > 0) {
       return initialTeams.map((team, index) =>
         createTeamScope(index + 1, {
           team,
           view: initialViews[index] ?? initialViews[0] ?? "",
-          excludeTechs: initialAgent?.excludeTechs ?? [],
-          excludeTechsEnabled: initialAgent?.excludeTechsEnabled,
-          fallbackStatus: initialAgent?.fallbackStatus ?? "No change",
+          statusMode: "Include only",
+          statuses: initialAgent?.statuses ?? [],
           skipFlowAssignedTickets: initialAgent?.skipFlowAssignedTickets ?? false,
         })
       );
@@ -2235,18 +2418,13 @@ function ConfigPage({
     (a) => a.mode === "Assign" || a.mode === "Assign + Schedule"
   );
 
-  const claimedTeams = new Map();
   const claimedBoards = new Map();
   assignmentAgents.forEach((a) => {
-    normalizeSelections(a.teams ?? a.team).forEach((t) =>
-      claimedTeams.set(t, a.name || "another agent")
-    );
     normalizeSelections(a.boards ?? a.board).forEach((b) =>
       claimedBoards.set(b, a.name || "another agent")
     );
   });
 
-  const teamClaimedByAgent = Object.fromEntries(claimedTeams);
   const boardClaimedByAgent = Object.fromEntries(claimedBoards);
 
   const ruleErrors = {};
@@ -2281,12 +2459,7 @@ function ConfigPage({
     setTeamScopes((prev) =>
       prev.map((scope) => {
         if (scope.id !== id) return scope;
-        const next = { ...scope, ...patch };
-        if (patch.team !== undefined && patch.team !== scope.team) {
-          next.view = patch.view ?? "";
-          next.excludeTechs = patch.excludeTechs ?? [];
-        }
-        return next;
+        return { ...scope, ...patch };
       })
     );
   };
@@ -2294,9 +2467,6 @@ function ConfigPage({
   const addTeamScope = () => {
     setTeamScopes((prev) => {
       const id = Date.now();
-      if (prev.length === 2) {
-        return [...prev, createTeamScope(id, DEMO_THIRD_TEAM_SCOPE)];
-      }
       return [...prev, createTeamScope(id)];
     });
   };
@@ -2324,16 +2494,16 @@ function ConfigPage({
       teams: isRoute ? [] : teams,
       teamScopes: isRoute ? undefined : teamScopes,
       assignMode,
-      excludeTechs: primaryScope?.excludeTechsEnabled ? primaryScope.excludeTechs : [],
-      excludeTechsEnabled: primaryScope?.excludeTechsEnabled ?? false,
+      excludeTechs: [],
+      excludeTechsEnabled: false,
       skipFlowAssignedTickets: primaryScope?.skipFlowAssignedTickets ?? false,
-      fallbackStatus: primaryScope?.fallbackStatus ?? "No change",
+      fallbackStatus: "No change",
       destinations: isRoute ? rules.map((r) => r.board).filter(Boolean) : [],
       routeRules: isRoute ? rules : undefined,
       guidanceMode: isRoute ? undefined : guidanceMode,
       agentInstructions: isRoute ? undefined : agentInstructions,
       guidancePublishedAt: isRoute ? undefined : publishedAtIso,
-      statuses,
+      statuses: isRoute ? statuses : primaryScope?.statuses ?? [],
       active,
     });
   };
@@ -2497,7 +2667,7 @@ function ConfigPage({
             <div className="mb-3">
               <h2 className="text-base font-semibold text-neutral-900">Agent scope</h2>
               <p className="text-sm text-neutral-500 mt-0.5">
-                Set the team and thread view this agent monitors.
+                Configure how each team scope handles ticket dispatching.
               </p>
             </div>
             <div className="space-y-3">
@@ -2505,12 +2675,8 @@ function ConfigPage({
                 <AgentScopeTeamCard
                   key={scope.id}
                   scope={scope}
-                  teamScopes={teamScopes}
-                  teamClaimedByAgent={teamClaimedByAgent}
-                  selectedTeamIds={teams}
                   onUpdate={(patch) => updateTeamScope(scope.id, patch)}
                   onRemove={() => removeTeamScope(scope.id)}
-                  canRemove={teamScopes.length > 1}
                 />
               ))}
             </div>

@@ -377,25 +377,50 @@ function MultiSelect({
   /** When false, trigger only shows placeholder; selections are shown elsewhere (e.g. chip row). */
   selectionInTrigger = true,
   menuMaxHeight = "min(34rem, calc(100vh - 6rem))",
+  menuWidth,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [menuPosition, setMenuPosition] = useState(null);
   const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
   const searchInputRef = useRef(null);
   const normalizedQuery = query.trim().toLowerCase();
   const filteredOptions = searchable
     ? options.filter((opt) => opt.toLowerCase().includes(normalizedQuery))
     : options;
 
+  const updateMenuPosition = () => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setMenuPosition({
+      top: rect.bottom + 4,
+      left: rect.left,
+      minWidth: rect.width,
+    });
+  };
+
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      setMenuPosition(null);
+      return undefined;
+    }
+    updateMenuPosition();
     const handleOutsideClick = (event) => {
-      if (rootRef.current && !rootRef.current.contains(event.target)) {
-        setOpen(false);
-      }
+      const target = event.target;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
+    const handleReposition = () => updateMenuPosition();
     document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -435,9 +460,145 @@ function MultiSelect({
     (selectionInTrigger && values.length === 0) ||
     (!selectionInTrigger && values.length === 0);
 
+  const dropdownMenu =
+    open && menuPosition && !disabled ? (
+      <div
+        ref={menuRef}
+        className={`fixed z-[200] flex flex-col bg-white border border-neutral-200 rounded-md shadow-lg ${dropdownClassName}`}
+        style={{
+          top: menuPosition.top,
+          left: menuPosition.left,
+          ...(menuWidth ? { width: menuWidth } : { minWidth: menuPosition.minWidth }),
+          maxHeight: menuMaxHeight,
+        }}
+      >
+        {searchable && (
+          <div className="px-2 pb-2 pt-1 border-b border-neutral-100 shrink-0">
+            <input
+              ref={searchInputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="w-full h-8 px-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+            />
+          </div>
+        )}
+        <div className="flex-1 overflow-y-auto py-1 min-h-0">
+          {filteredOptions.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-neutral-500">No matches found</div>
+          ) : (
+            filteredOptions.map((opt) => {
+              const selected = values.includes(opt);
+              const usedByAgentName = disabledClaims?.[opt];
+              const legacyDisabledReason =
+                !usedByAgentName && (getDisabledReason?.(opt) || disabledOptions?.[opt]);
+              const optionDisabled = Boolean(usedByAgentName || legacyDisabledReason);
+              if (optionDisabled) {
+                const tooltipText = usedByAgentName
+                  ? `Used by ${usedByAgentName}`
+                  : legacyDisabledReason;
+                const rowInner = (
+                  <>
+                    <span className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate text-neutral-400">
+                      {renderOptionLabel?.(opt) || opt}
+                    </span>
+                    {usedByAgentName ? (
+                      <Lock
+                        size={13}
+                        className="shrink-0 text-neutral-400"
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                    ) : (
+                      <span className="shrink-0 text-[11px] font-medium text-neutral-400">
+                        In use
+                      </span>
+                    )}
+                  </>
+                );
+                if (tooltipText) {
+                  return (
+                    <Tooltip key={opt} delayDuration={120}>
+                      <TooltipTrigger asChild>
+                        <div
+                          role="option"
+                          aria-disabled="true"
+                          className="flex w-full min-w-0 cursor-not-allowed items-center gap-2 bg-neutral-50/90 px-3 py-1.5 text-left text-sm outline-none"
+                        >
+                          {rowInner}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" align="center">
+                        {tooltipText}
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                }
+                return (
+                  <div
+                    key={opt}
+                    role="option"
+                    aria-disabled="true"
+                    title={tooltipText || undefined}
+                    className="flex w-full min-w-0 cursor-not-allowed items-center gap-2 bg-neutral-50/90 px-3 py-1.5 text-left text-sm"
+                  >
+                    {rowInner}
+                  </div>
+                );
+              }
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    toggle(opt);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
+                >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      selected
+                        ? "border-emerald-500 bg-emerald-500"
+                        : "border-neutral-300 bg-white"
+                    }`}
+                  >
+                    {selected && <Check size={11} className="text-white" strokeWidth={3} />}
+                  </span>
+                  <span className={`min-w-0 flex-1 truncate ${selected ? "font-semibold" : ""}`}>
+                    {renderOptionLabel?.(opt) || opt}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+        {withSelectAll && options.length > 0 && (
+          <div className="border-t border-neutral-100 px-1.5 py-1.5 shrink-0 bg-white rounded-b-md">
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                if (values.length === options.length) {
+                  onChange([]);
+                } else {
+                  onChange([...options]);
+                }
+              }}
+              className="w-full text-left px-2 py-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 hover:bg-neutral-50 rounded-md"
+            >
+              {values.length === options.length ? "Clear all" : "Select all"}
+            </button>
+          </div>
+        )}
+      </div>
+    ) : null;
+
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative overflow-visible">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => !disabled && setOpen((o) => !o)}
         title={disabled ? disabledMessage : undefined}
@@ -493,133 +654,7 @@ function MultiSelect({
         )}
         <ChevronDown size={14} className="text-neutral-400 shrink-0" />
       </button>
-      {open && !disabled && (
-        <div
-          className={`absolute right-0 top-full mt-1 min-w-full bg-white border border-neutral-200 rounded-md shadow-lg z-20 flex flex-col ${dropdownClassName}`}
-          style={{ maxHeight: menuMaxHeight }}
-        >
-          {searchable && (
-            <div className="px-2 pb-2 pt-1 border-b border-neutral-100 shrink-0">
-              <input
-                ref={searchInputRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={searchPlaceholder}
-                className="w-full h-8 px-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-              />
-            </div>
-          )}
-          <div className="flex-1 overflow-y-auto py-1 min-h-0">
-            {filteredOptions.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-neutral-500">No matches found</div>
-            ) : (
-              filteredOptions.map((opt) => {
-                const selected = values.includes(opt);
-                const usedByAgentName = disabledClaims?.[opt];
-                const legacyDisabledReason =
-                  !usedByAgentName && (getDisabledReason?.(opt) || disabledOptions?.[opt]);
-                const optionDisabled = Boolean(usedByAgentName || legacyDisabledReason);
-                if (optionDisabled) {
-                  const tooltipText = usedByAgentName
-                    ? `Used by ${usedByAgentName}`
-                    : legacyDisabledReason;
-                  const rowInner = (
-                    <>
-                      <span className="h-4 w-4 shrink-0" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate text-neutral-400">
-                        {renderOptionLabel?.(opt) || opt}
-                      </span>
-                      {usedByAgentName ? (
-                        <Lock
-                          size={13}
-                          className="shrink-0 text-neutral-400"
-                          strokeWidth={2}
-                          aria-hidden
-                        />
-                      ) : (
-                        <span className="shrink-0 text-[11px] font-medium text-neutral-400">
-                          In use
-                        </span>
-                      )}
-                    </>
-                  );
-                  if (tooltipText) {
-                    return (
-                      <Tooltip key={opt} delayDuration={120}>
-                        <TooltipTrigger asChild>
-                          <div
-                            role="option"
-                            aria-disabled="true"
-                            className="flex w-full min-w-0 cursor-not-allowed items-center gap-2 bg-neutral-50/90 px-3 py-1.5 text-left text-sm outline-none"
-                          >
-                            {rowInner}
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" align="center">
-                          {tooltipText}
-                        </TooltipContent>
-                      </Tooltip>
-                    );
-                  }
-                  return (
-                    <div
-                      key={opt}
-                      role="option"
-                      aria-disabled="true"
-                      title={tooltipText || undefined}
-                      className="flex w-full min-w-0 cursor-not-allowed items-center gap-2 bg-neutral-50/90 px-3 py-1.5 text-left text-sm"
-                    >
-                      {rowInner}
-                    </div>
-                  );
-                }
-                return (
-                  <button
-                    key={opt}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      toggle(opt);
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
-                  >
-                    <span
-                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                        selected
-                          ? "border-emerald-500 bg-emerald-500"
-                          : "border-neutral-300 bg-white"
-                      }`}
-                    >
-                      {selected && <Check size={11} className="text-white" strokeWidth={3} />}
-                    </span>
-                    <span className={`min-w-0 flex-1 truncate ${selected ? "font-semibold" : ""}`}>
-                      {renderOptionLabel?.(opt) || opt}
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-          {withSelectAll && options.length > 0 && (
-            <div className="border-t border-neutral-100 px-1.5 py-1.5 shrink-0 bg-white rounded-b-md">
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  if (values.length === options.length) {
-                    onChange([]);
-                  } else {
-                    onChange([...options]);
-                  }
-                }}
-                className="w-full text-left px-2 py-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 hover:bg-neutral-50 rounded-md"
-              >
-                {values.length === options.length ? "Clear all" : "Select all"}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      {dropdownMenu ? createPortal(dropdownMenu, document.body) : null}
     </div>
   );
 }
@@ -1821,25 +1856,27 @@ const RANKING_SIGNAL_DEFINITIONS = [
   {
     id: "contact-type",
     name: "Contact type",
-    description: "Tickets matching the selected type rank higher.",
+    description: "Tickets matching any selected type rank higher.",
     enabled: true,
     value: 50,
     options: ["Standard", "VIP", "Executive"],
-    selectedOption: "Standard",
+    selectedOptions: ["Standard"],
+    multiSelect: true,
   },
   {
     id: "company-type",
     name: "Company type",
-    description: "Tickets matching the selected company type rank higher.",
+    description: "Tickets matching any selected company type rank higher.",
     enabled: true,
     value: 50,
     options: SCOPE_FILTER_METADATA["Company type"].values,
-    selectedOption: "Managed Service",
+    selectedOptions: ["Managed Service"],
+    multiSelect: true,
   },
   {
     id: "agreement-type",
     name: "Agreement type",
-    description: "Tickets matching the selected type rank higher.",
+    description: "Tickets matching any selected agreement type rank higher.",
     enabled: false,
     value: 50,
     options: [
@@ -1849,7 +1886,8 @@ const RANKING_SIGNAL_DEFINITIONS = [
       "Monitoring",
       "Time and materials",
     ],
-    selectedOption: "Block Time - One time",
+    selectedOptions: ["Block Time - One time"],
+    multiSelect: true,
   },
 ];
 
@@ -1862,6 +1900,36 @@ function normalizeRankingSignals(initialSignals) {
     const saved = savedById.get(definition.id);
     const nextValue = Number(saved?.value);
     const hasOptions = Array.isArray(definition.options) && definition.options.length > 0;
+
+    if (definition.multiSelect && hasOptions) {
+      const savedOptions = Array.isArray(saved?.selectedOptions)
+        ? saved.selectedOptions.filter((opt) => definition.options.includes(opt))
+        : [];
+      const migratedFromSingle =
+        typeof saved?.selectedOption === "string" &&
+        definition.options.includes(saved.selectedOption)
+          ? [saved.selectedOption]
+          : [];
+      const fallbackOptions = Array.isArray(definition.selectedOptions)
+        ? definition.selectedOptions.filter((opt) => definition.options.includes(opt))
+        : definition.options[0]
+        ? [definition.options[0]]
+        : [];
+      const selectedOptions =
+        savedOptions.length > 0
+          ? savedOptions
+          : migratedFromSingle.length > 0
+          ? migratedFromSingle
+          : fallbackOptions;
+
+      return {
+        ...definition,
+        enabled: typeof saved?.enabled === "boolean" ? saved.enabled : definition.enabled,
+        value: Number.isFinite(nextValue) ? Math.max(0, Math.min(100, nextValue)) : definition.value,
+        selectedOptions,
+      };
+    }
+
     const fallbackOption = hasOptions ? definition.selectedOption ?? definition.options[0] : undefined;
     const selectedOption =
       hasOptions && definition.options.includes(saved?.selectedOption)
@@ -1879,7 +1947,11 @@ function normalizeRankingSignals(initialSignals) {
 function buildAgentInstructionsFromSignals(signals) {
   const signalLines = signals.map((signal, index) => {
     const status = signal.enabled ? "enabled" : "disabled";
-    const optionText = signal.options ? `, filter is ${signal.selectedOption}` : "";
+    const optionText = signal.options
+      ? signal.multiSelect
+        ? `, filter is ${(signal.selectedOptions ?? []).join(", ") || "none"}`
+        : `, filter is ${signal.selectedOption}`
+      : "";
     return `${index + 1}. ${signal.name}: ${status}, weight ${signal.value}/100${optionText}.`;
   });
 
@@ -1919,14 +1991,28 @@ function SignalRowContent({
           {hasOptions ? (
             <>
               <span className="text-sm text-neutral-500">is</span>
-              <Select
-                value={signal.selectedOption}
-                options={signal.options}
-                onChange={(selectedOption) => onUpdateSignal(signal.id, { selectedOption })}
-                disabled={isDisabled || isOverlay}
-                triggerClassName="h-6 max-w-[180px] px-2 py-0 text-xs"
-                menuWidth={signal.id === "agreement-type" ? 300 : undefined}
-              />
+              {signal.multiSelect ? (
+                <MultiSelect
+                  values={signal.selectedOptions ?? []}
+                  options={signal.options}
+                  onChange={(selectedOptions) => onUpdateSignal(signal.id, { selectedOptions })}
+                  disabled={isDisabled || isOverlay}
+                  placeholder="Select types"
+                  triggerClassName="!h-6 !min-h-6 !max-h-6 !py-0 max-w-[180px] px-2 text-xs"
+                  menuWidth={signal.id === "agreement-type" ? 300 : undefined}
+                  dropdownClassName={
+                    signal.id === "agreement-type" ? "min-w-[300px]" : "min-w-[180px]"
+                  }
+                />
+              ) : (
+                <Select
+                  value={signal.selectedOption}
+                  options={signal.options}
+                  onChange={(selectedOption) => onUpdateSignal(signal.id, { selectedOption })}
+                  disabled={isDisabled || isOverlay}
+                  triggerClassName="!h-6 !min-h-6 !max-h-6 !py-0 max-w-[180px] px-2 text-xs"
+                />
+              )}
             </>
           ) : null}
         </div>
@@ -2204,7 +2290,7 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
     <div className="mb-10">
       <div className="mb-3">
         <div className="flex items-center gap-1.5">
-          <h2 className="text-base font-semibold text-neutral-900">Ranking signals</h2>
+          <h2 className="text-base font-semibold text-neutral-900">Thread scoring</h2>
           <Tooltip delayDuration={200}>
             <TooltipTrigger asChild>
               <button
@@ -2820,7 +2906,7 @@ function ConfigPage({
   const [limitWorkload, setLimitWorkload] = useState(false);
   const [workloadPct, setWorkloadPct] = useState(50);
 
-  // --- Ranking signals (Assign + Assign+Schedule)
+  // --- Thread scoring (Assign + Assign+Schedule)
   const [rankingSignals, setRankingSignals] = useState(() =>
     normalizeRankingSignals(initialAgent?.rankingSignals)
   );
@@ -3554,7 +3640,7 @@ function ConfigPage({
           </>
         )}
 
-        {/* Ranking signals — Queue-based only */}
+        {/* Thread scoring — Queue-based only */}
         {!isRoute && dispatchMode === "Queue-based" && (
           <RankingSignalsSection signals={rankingSignals} onChangeSignals={setRankingSignals} />
         )}

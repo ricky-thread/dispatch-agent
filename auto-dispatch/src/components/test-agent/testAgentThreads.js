@@ -282,32 +282,44 @@ function hasDropdownSelection(selectedOption) {
   return typeof selectedOption === "string" && selectedOption.trim() !== "";
 }
 
-/** Match dropdown filter from Ranking signals: match = 1, no selection = 0.5, mismatch = 0. */
-function getDropdownFilterSignal(threadValue, signalConfig, { matchLabel, noSelectionFactor = 0.5 }) {
-  const selectedOption = signalConfig?.selectedOption;
-  if (!hasDropdownSelection(selectedOption)) {
+/** Match multi-select filter from Thread scoring: match = 1, no selection = 0.5, mismatch = 0. */
+function getSignalSelectedOptions(signalConfig) {
+  if (Array.isArray(signalConfig?.selectedOptions) && signalConfig.selectedOptions.length > 0) {
+    return signalConfig.selectedOptions;
+  }
+  if (hasDropdownSelection(signalConfig?.selectedOption)) {
+    return [signalConfig.selectedOption];
+  }
+  return [];
+}
+
+function getMultiSelectFilterSignal(threadValue, selectedOptions, { matchLabel, noSelectionFactor = 0.5 }) {
+  const selections = Array.isArray(selectedOptions)
+    ? selectedOptions.filter((opt) => typeof opt === "string" && opt.trim() !== "")
+    : [];
+  if (selections.length === 0) {
     return { factor: noSelectionFactor, label: null };
   }
-  if (threadValue === selectedOption) {
-    return { factor: 1, label: matchLabel(threadValue, selectedOption) };
+  if (selections.includes(threadValue)) {
+    return { factor: 1, label: matchLabel(threadValue) };
   }
   return { factor: 0, label: null };
 }
 
 function getContactTypeSignal(thread, signalConfig) {
-  return getDropdownFilterSignal(thread?.contactType, signalConfig, {
+  return getMultiSelectFilterSignal(thread?.contactType, getSignalSelectedOptions(signalConfig), {
     matchLabel: (contactType) => `${contactType} contact`,
   });
 }
 
 function getCompanyTypeSignal(thread, signalConfig) {
-  return getDropdownFilterSignal(thread?.companyType, signalConfig, {
+  return getMultiSelectFilterSignal(thread?.companyType, getSignalSelectedOptions(signalConfig), {
     matchLabel: (companyType) => `${companyType} company`,
   });
 }
 
 function getAgreementTypeSignal(thread, signalConfig) {
-  return getDropdownFilterSignal(thread?.agreementType, signalConfig, {
+  return getMultiSelectFilterSignal(thread?.agreementType, getSignalSelectedOptions(signalConfig), {
     matchLabel: (agreementType) => `${agreementType} agreement`,
   });
 }

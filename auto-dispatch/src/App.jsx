@@ -3567,7 +3567,7 @@ function ConfigPage({
           </Section>
         )}
 
-        {/* Technician assignment + Guidance — Auto-assign only */}
+        {/* Technician assignment — Auto-assign only */}
         {!isRoute && dispatchMode === "Auto-assign" && (
           <>
             <Section
@@ -3610,21 +3610,24 @@ function ConfigPage({
                 />
               </Row>
             </Section>
-            <GuidanceSection
-              guidanceTab={guidanceTab}
-              onGuidanceTabChange={setGuidanceTab}
-              customGuidance={customGuidance}
-              onCustomGuidanceChange={setCustomGuidance}
-              assignAgentInstructions={assignAgentInstructions}
-              onAssignAgentInstructionsChange={setAssignAgentInstructions}
-              onResetAgentInstructions={() =>
-                setAssignAgentInstructions(DEFAULT_ASSIGN_AGENT_INSTRUCTIONS)
-              }
-              canUndoLastSaved={canUndoAssignAgentInstructions}
-              onUndoLastSaved={() =>
-                setAssignAgentInstructions(lastSavedAssignAgentInstructions)
-              }
-            />
+            {/* Guidance — hidden for prototype; set to true to show */}
+            {false && (
+              <GuidanceSection
+                guidanceTab={guidanceTab}
+                onGuidanceTabChange={setGuidanceTab}
+                customGuidance={customGuidance}
+                onCustomGuidanceChange={setCustomGuidance}
+                assignAgentInstructions={assignAgentInstructions}
+                onAssignAgentInstructionsChange={setAssignAgentInstructions}
+                onResetAgentInstructions={() =>
+                  setAssignAgentInstructions(DEFAULT_ASSIGN_AGENT_INSTRUCTIONS)
+                }
+                canUndoLastSaved={canUndoAssignAgentInstructions}
+                onUndoLastSaved={() =>
+                  setAssignAgentInstructions(lastSavedAssignAgentInstructions)
+                }
+              />
+            )}
           </>
         )}
 

@@ -2873,9 +2873,6 @@ function ConfigPage({
     if (window && CALENDAR_AVAILABILITY_OPTIONS.includes(window)) return window;
     return "Ignore";
   });
-  const [assignmentTimeout, setAssignmentTimeout] = useState(
-    initialAgent?.assignmentTimeout ?? "2 minutes"
-  );
   const [fallbackStatus, setFallbackStatus] = useState(
     initialAgent?.fallbackStatus ?? "Escalation"
   );
@@ -3122,7 +3119,6 @@ function ConfigPage({
       dispatchMode: isRoute ? undefined : dispatchMode,
       maxActiveThreads: isRoute ? undefined : maxActiveThreads,
       calendarAvailability: isRoute ? undefined : calendarAvailability,
-      assignmentTimeout: isRoute ? undefined : assignmentTimeout,
       excludeTechs: [],
       excludeTechsEnabled: false,
       skipFlowAssignedTickets: primaryScope?.skipFlowAssignedTickets ?? false,
@@ -3600,16 +3596,6 @@ function ConfigPage({
                   value={calendarAvailability}
                   options={CALENDAR_AVAILABILITY_OPTIONS}
                   onChange={setCalendarAvailability}
-                />
-              </Row>
-              <Row
-                label="Assignment timeout"
-                subcopy="Time before the agent stops searching."
-              >
-                <Select
-                  value={assignmentTimeout}
-                  options={["2 minutes", "5 minutes", "10 minutes"]}
-                  onChange={setAssignmentTimeout}
                 />
               </Row>
               <Row

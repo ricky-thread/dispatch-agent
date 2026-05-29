@@ -223,17 +223,16 @@ export const TEST_AGENT_THREADS = [
 ];
 
 export const MAX_TEST_THREADS = 10;
-const BASE_POINTS_BY_POSITION = [100, 85, 70, 55, 40, 25, 10];
 
 export const DEFAULT_TEST_AGENT_SIGNALS = [
-  { id: "sla-risk", enabled: true, value: 50 },
-  { id: "priority", enabled: true, value: 50 },
-  { id: "client-replied", enabled: true, value: 50 },
-  { id: "sentiment", enabled: true, value: 50 },
-  { id: "ticket-age", enabled: true, value: 50 },
-  { id: "contact-type", enabled: true, value: 50 },
-  { id: "company-type", enabled: true, value: 50 },
-  { id: "agreement-type", enabled: false, value: 50 },
+  { id: "priority", enabled: true, value: 18 },
+  { id: "sla-risk", enabled: true, value: 25 },
+  { id: "ticket-age", enabled: true, value: 10 },
+  { id: "client-replied", enabled: true, value: 20 },
+  { id: "sentiment", enabled: true, value: 12 },
+  { id: "contact-type", enabled: true, value: 8 },
+  { id: "company-type", enabled: true, value: 7 },
+  { id: "agreement-type", enabled: true, value: 0 },
 ];
 
 /** Mock inbox team per thread for multi-team test agent ranking. */
@@ -403,53 +402,53 @@ export function getTestAgentThread(id) {
   return threadById.get(id);
 }
 
+export function getRankingWeightTotal(rankingSignals) {
+  return normalizeSignals(rankingSignals).reduce(
+    (sum, signal) => sum + (Number(signal.value) || 0),
+    0
+  );
+}
+
 function normalizeSignals(rankingSignals) {
-  const definitionById = new Map(DEFAULT_TEST_AGENT_SIGNALS.map((signal) => [signal.id, signal]));
   const savedById = new Map(
     Array.isArray(rankingSignals)
       ? rankingSignals.map((signal) => [signal.id, signal])
       : []
   );
-  const orderedIds =
-    Array.isArray(rankingSignals) && rankingSignals.length > 0
-      ? rankingSignals.map((signal) => signal.id).filter((id) => definitionById.has(id))
-      : DEFAULT_TEST_AGENT_SIGNALS.map((signal) => signal.id);
-  const seen = new Set(orderedIds);
-  DEFAULT_TEST_AGENT_SIGNALS.forEach((signal) => {
-    if (!seen.has(signal.id)) orderedIds.push(signal.id);
-  });
 
-  return orderedIds.map((id) => {
-    const signal = definitionById.get(id);
-    const saved = savedById.get(id);
+  return DEFAULT_TEST_AGENT_SIGNALS.map((signal) => {
+    const saved = savedById.get(signal.id);
     const value = Number(saved?.value);
+    const migratedValue =
+      saved?.enabled === false && !Number.isFinite(value) ? 0 : value;
+
     return {
       ...signal,
-      enabled: typeof saved?.enabled === "boolean" ? saved.enabled : signal.enabled,
-      value: Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : signal.value,
+      enabled: true,
+      value: Number.isFinite(migratedValue)
+        ? Math.max(0, Math.min(100, migratedValue))
+        : signal.value,
     };
   });
 }
 
 export function computeTestAgentRanking(threadIds, rankingSignals) {
   const normalizedSignals = normalizeSignals(rankingSignals);
+  const scoreMax = getRankingWeightTotal(rankingSignals);
   const scored = threadIds.map((threadId, originalIndex) => {
     const thread = getTestAgentThread(threadId);
     const factors = buildThreadFactors(thread, rankingSignals);
-    const contributions = normalizedSignals.map((signal, index) => {
-      const basePoints = BASE_POINTS_BY_POSITION[index] ?? 0;
-      if (!signal.enabled) {
-        return { ...signal, basePoints, points: 0, label: null };
-      }
-      const signalFactor = factors[signal.id]?.factor ?? 0;
-      const rawPoints = (signal.value / 100) * basePoints * signalFactor;
-      return {
-        ...signal,
-        basePoints,
-        points: rawPoints,
-        label: factors[signal.id]?.label ?? null,
-      };
-    });
+    const contributions = normalizedSignals
+      .filter((signal) => signal.value > 0)
+      .map((signal) => {
+        const signalFactor = factors[signal.id]?.factor ?? 0;
+        const rawPoints = signal.value * signalFactor;
+        return {
+          ...signal,
+          points: rawPoints,
+          label: factors[signal.id]?.label ?? null,
+        };
+      });
 
     const score = Math.round(
       contributions.reduce((sum, contribution) => sum + contribution.points, 0)
@@ -478,6 +477,7 @@ export function computeTestAgentRanking(threadIds, rankingSignals) {
     acc[item.threadId] = {
       rank: index + 1,
       score: item.score,
+      scoreMax,
       reasoning: item.reasoning,
     };
     return acc;

@@ -65,7 +65,9 @@ export default function ThreadCard({ thread, onRemove, ranking, rankingDisplayMo
           <span className="font-semibold">{ranking.rank}. </span>
           {rankingDisplayMode === "points" ? (
             <>
-              <span className="text-teal-800/65">{ranking.score} pts</span>
+              <span className="text-teal-800/65">
+                {ranking.score}/{ranking.scoreMax ?? 100}
+              </span>
               {ranking.reasoning ? ` — ${ranking.reasoning}.` : ""}
             </>
           ) : (

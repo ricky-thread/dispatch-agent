@@ -22,14 +22,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -41,6 +33,7 @@ import {
 import FlowsPage from "./components/flows/FlowsPage";
 import SlasPage from "./components/slas/SlasPage";
 import TestAgentPanel from "./components/test-agent/TestAgentPanel";
+import { getRankingWeightTotal } from "./components/test-agent/testAgentThreads";
 import {
   ArrowLeft,
   Activity,
@@ -116,13 +109,6 @@ function formatLastPublished(date) {
   });
   return `Last published ${month} ${day} at ${time}`;
 }
-const CALENDAR_AVAILABILITY_OPTIONS = [
-  "Ignore",
-  "Today only",
-  "Today and tomorrow",
-  "Next 3 days",
-  "Next 7 days",
-];
 const SCOPE_TEAM_OPTIONS = ["Team Red", "Team Blue", "Team Green", "Network Ops", "Procurement"];
 const SCOPE_BOARD_OPTIONS = ["Help Desk", "Network", "Projects", "Voice"];
 const SCOPE_STATUS_OPTIONS = [
@@ -1292,10 +1278,26 @@ function statusBroadContainsNarrow(broadScope, narrowScope) {
   return narrow.statuses.every((status) => broad.statuses.includes(status));
 }
 
+function scopeFilterCompareKey(condition) {
+  const valueIds = [...(condition.valueIds || [])].sort();
+  return `${condition.filterType}|${condition.operator}|${valueIds.join("\0")}`;
+}
+
+function scopeFiltersEqual(scopeA, scopeB) {
+  const filtersA = getScopeFilters(scopeA)
+    .map(scopeFilterCompareKey)
+    .sort();
+  const filtersB = getScopeFilters(scopeB)
+    .map(scopeFilterCompareKey)
+    .sort();
+  if (filtersA.length !== filtersB.length) return false;
+  return filtersA.every((key, index) => key === filtersB[index]);
+}
+
 function isScopeDuplicate(scopeA, scopeB) {
   if (!scopeBoardsMatch(scopeA, scopeB)) return false;
   if (!statusSetsEqual(getScopeStatus(scopeA), getScopeStatus(scopeB))) return false;
-  return !hasScopeConditions(scopeA) && !hasScopeConditions(scopeB);
+  return scopeFiltersEqual(scopeA, scopeB);
 }
 
 function isScopeSuperset(broadScope, narrowScope) {
@@ -1820,46 +1822,46 @@ const AGENT_CONTEXT_FIELDS = [
 
 const RANKING_SIGNAL_DEFINITIONS = [
   {
-    id: "sla-risk",
-    name: "SLA risk",
-    description: "Tickets closer to breaching rank higher.",
-    enabled: true,
-    value: 50,
-  },
-  {
     id: "priority",
     name: "Priority",
     description: "Higher priority tickets rank first.",
     enabled: true,
-    value: 50,
+    value: 18,
+  },
+  {
+    id: "sla-risk",
+    name: "SLA risk",
+    description: "Tickets closer to breaching rank higher.",
+    enabled: true,
+    value: 25,
+  },
+  {
+    id: "ticket-age",
+    name: "Ticket age",
+    description: "Older tickets rank higher when properties are equal.",
+    enabled: true,
+    value: 10,
   },
   {
     id: "client-replied",
     name: "Client replied",
     description: "Tickets with unanswered replies rank higher.",
     enabled: true,
-    value: 50,
+    value: 20,
   },
   {
     id: "sentiment",
     name: "Sentiment",
     description: "Tickets with negative client sentiment rank higher.",
     enabled: true,
-    value: 50,
-  },
-  {
-    id: "ticket-age",
-    name: "Ticket age",
-    description: "Older tickets rank higher when signals are equal.",
-    enabled: true,
-    value: 50,
+    value: 12,
   },
   {
     id: "contact-type",
     name: "Contact type",
     description: "Tickets matching any selected type rank higher.",
     enabled: true,
-    value: 50,
+    value: 8,
     options: ["Standard", "VIP", "Executive"],
     selectedOptions: ["Standard"],
     multiSelect: true,
@@ -1869,7 +1871,7 @@ const RANKING_SIGNAL_DEFINITIONS = [
     name: "Company type",
     description: "Tickets matching any selected company type rank higher.",
     enabled: true,
-    value: 50,
+    value: 7,
     options: SCOPE_FILTER_METADATA["Company type"].values,
     selectedOptions: ["Managed Service"],
     multiSelect: true,
@@ -1878,8 +1880,8 @@ const RANKING_SIGNAL_DEFINITIONS = [
     id: "agreement-type",
     name: "Agreement type",
     description: "Tickets matching any selected agreement type rank higher.",
-    enabled: false,
-    value: 50,
+    enabled: true,
+    value: 0,
     options: [
       "Block Time - One time",
       "Block Time - Recurring",
@@ -1892,100 +1894,100 @@ const RANKING_SIGNAL_DEFINITIONS = [
   },
 ];
 
+function clampRankingWeight(value, fallback = 0) {
+  const next = Number(value);
+  return Number.isFinite(next) ? Math.max(0, Math.min(100, Math.round(next))) : fallback;
+}
+
+function mergeRankingSignalDefinition(definition, saved) {
+  const nextValue = Number(saved?.value);
+  const hasOptions = Array.isArray(definition.options) && definition.options.length > 0;
+
+  if (definition.multiSelect && hasOptions) {
+    const savedOptions = Array.isArray(saved?.selectedOptions)
+      ? saved.selectedOptions.filter((opt) => definition.options.includes(opt))
+      : [];
+    const migratedFromSingle =
+      typeof saved?.selectedOption === "string" &&
+      definition.options.includes(saved.selectedOption)
+        ? [saved.selectedOption]
+        : [];
+    const fallbackOptions = Array.isArray(definition.selectedOptions)
+      ? definition.selectedOptions.filter((opt) => definition.options.includes(opt))
+      : definition.options[0]
+      ? [definition.options[0]]
+      : [];
+    const selectedOptions =
+      savedOptions.length > 0
+        ? savedOptions
+        : migratedFromSingle.length > 0
+        ? migratedFromSingle
+        : fallbackOptions;
+
+    const migratedValue =
+      saved?.enabled === false && !Number.isFinite(nextValue) ? 0 : nextValue;
+
+    return {
+      ...definition,
+      enabled: true,
+      value: Number.isFinite(migratedValue)
+        ? Math.max(0, Math.min(100, migratedValue))
+        : definition.value,
+      selectedOptions,
+    };
+  }
+
+  const fallbackOption = hasOptions ? definition.selectedOption ?? definition.options[0] : undefined;
+  const selectedOption =
+    hasOptions && definition.options.includes(saved?.selectedOption)
+      ? saved.selectedOption
+      : fallbackOption;
+  const migratedValue =
+    saved?.enabled === false && !Number.isFinite(nextValue) ? 0 : nextValue;
+
+  return {
+    ...definition,
+    enabled: true,
+    value: Number.isFinite(migratedValue)
+      ? Math.max(0, Math.min(100, migratedValue))
+      : definition.value,
+    selectedOption,
+  };
+}
+
 function normalizeRankingSignals(initialSignals) {
   const savedById = new Map(
     Array.isArray(initialSignals) ? initialSignals.map((signal) => [signal.id, signal]) : []
   );
 
-  return RANKING_SIGNAL_DEFINITIONS.map((definition) => {
-    const saved = savedById.get(definition.id);
-    const nextValue = Number(saved?.value);
-    const hasOptions = Array.isArray(definition.options) && definition.options.length > 0;
-
-    if (definition.multiSelect && hasOptions) {
-      const savedOptions = Array.isArray(saved?.selectedOptions)
-        ? saved.selectedOptions.filter((opt) => definition.options.includes(opt))
-        : [];
-      const migratedFromSingle =
-        typeof saved?.selectedOption === "string" &&
-        definition.options.includes(saved.selectedOption)
-          ? [saved.selectedOption]
-          : [];
-      const fallbackOptions = Array.isArray(definition.selectedOptions)
-        ? definition.selectedOptions.filter((opt) => definition.options.includes(opt))
-        : definition.options[0]
-        ? [definition.options[0]]
-        : [];
-      const selectedOptions =
-        savedOptions.length > 0
-          ? savedOptions
-          : migratedFromSingle.length > 0
-          ? migratedFromSingle
-          : fallbackOptions;
-
-      return {
-        ...definition,
-        enabled: typeof saved?.enabled === "boolean" ? saved.enabled : definition.enabled,
-        value: Number.isFinite(nextValue) ? Math.max(0, Math.min(100, nextValue)) : definition.value,
-        selectedOptions,
-      };
-    }
-
-    const fallbackOption = hasOptions ? definition.selectedOption ?? definition.options[0] : undefined;
-    const selectedOption =
-      hasOptions && definition.options.includes(saved?.selectedOption)
-        ? saved.selectedOption
-        : fallbackOption;
-    return {
-      ...definition,
-      enabled: typeof saved?.enabled === "boolean" ? saved.enabled : definition.enabled,
-      value: Number.isFinite(nextValue) ? Math.max(0, Math.min(100, nextValue)) : definition.value,
-      selectedOption,
-    };
-  });
+  return RANKING_SIGNAL_DEFINITIONS.map((definition) =>
+    mergeRankingSignalDefinition(definition, savedById.get(definition.id))
+  );
 }
 
 function buildAgentInstructionsFromSignals(signals) {
   const signalLines = signals.map((signal, index) => {
-    const status = signal.enabled ? "enabled" : "disabled";
     const optionText = signal.options
       ? signal.multiSelect
         ? `, filter is ${(signal.selectedOptions ?? []).join(", ") || "none"}`
         : `, filter is ${signal.selectedOption}`
       : "";
-    return `${index + 1}. ${signal.name}: ${status}, weight ${signal.value}/100${optionText}.`;
+    return `${index + 1}. ${signal.name}: ${signal.value} points${optionText}.`;
   });
 
-  return `You are a dispatch ranking agent. Rank tickets by urgency based on these configured signals, considering active signals together:
+  return `You are a dispatch ranking agent. Rank tickets by urgency based on these configured ticket properties (${getRankingWeightTotal(signals)}/100 points allocated):
 ${signalLines.join("\n")}`;
 }
 
-function SignalRowContent({
-  signal,
-  onUpdateSignal,
-  isOverlay = false,
-  dragHandleProps,
-}) {
-  const isDisabled = !signal.enabled;
+function RankingPropertyRow({ signal, onSetWeight, onPatchSignal, isFirst, isLast }) {
   const hasOptions = Array.isArray(signal.options) && signal.options.length > 0;
 
   return (
-    <div className="flex items-center gap-4 px-5 py-4 bg-white">
-      <button
-        type="button"
-        className="shrink-0 cursor-grab touch-none text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
-        aria-label={`Reorder ${signal.name}`}
-        {...dragHandleProps}
-      >
-        <span className="text-lg leading-none">⋮⋮</span>
-      </button>
-
-      <Switch
-        checked={signal.enabled}
-        onCheckedChange={(checked) => onUpdateSignal(signal.id, { enabled: checked })}
-        size="sm"
-      />
-
+    <div
+      className={`flex items-center gap-4 bg-white px-5 py-4 ${isFirst ? "rounded-t-lg" : ""} ${
+        isLast ? "rounded-b-lg" : "border-b border-neutral-200"
+      }`}
+    >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <div className="text-sm font-medium text-neutral-900">{signal.name}</div>
@@ -1996,8 +1998,9 @@ function SignalRowContent({
                 <MultiSelect
                   values={signal.selectedOptions ?? []}
                   options={signal.options}
-                  onChange={(selectedOptions) => onUpdateSignal(signal.id, { selectedOptions })}
-                  disabled={isDisabled || isOverlay}
+                  onChange={(selectedOptions) =>
+                    onPatchSignal(signal.id, { selectedOptions })
+                  }
                   placeholder="Select types"
                   triggerClassName="!h-6 !min-h-6 !max-h-6 !py-0 max-w-[180px] px-2 text-xs"
                   menuWidth={signal.id === "agreement-type" ? 300 : undefined}
@@ -2009,20 +2012,19 @@ function SignalRowContent({
                 <Select
                   value={signal.selectedOption}
                   options={signal.options}
-                  onChange={(selectedOption) => onUpdateSignal(signal.id, { selectedOption })}
-                  disabled={isDisabled || isOverlay}
+                  onChange={(selectedOption) =>
+                    onPatchSignal(signal.id, { selectedOption })
+                  }
                   triggerClassName="!h-6 !min-h-6 !max-h-6 !py-0 max-w-[180px] px-2 text-xs"
                 />
               )}
             </>
           ) : null}
         </div>
-        <p className={`mt-0.5 text-sm ${isDisabled ? "text-neutral-400" : "text-neutral-500"}`}>
-          {signal.description}
-        </p>
+        <p className="mt-0.5 text-sm text-neutral-500">{signal.description}</p>
       </div>
 
-      <div className={`w-[180px] shrink-0 ${isDisabled ? "opacity-50" : ""}`}>
+      <div className="w-[180px] shrink-0">
         <div className="mt-1 flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <Slider
@@ -2030,53 +2032,14 @@ function SignalRowContent({
               max={100}
               step={1}
               value={[signal.value]}
-              disabled={isDisabled || isOverlay}
-              onValueChange={([value]) => onUpdateSignal(signal.id, { value })}
+              onValueChange={([value]) => onSetWeight(signal.id, value)}
             />
           </div>
-          <span className="min-w-[2ch] text-left text-xs text-neutral-500">{signal.value}</span>
+          <span className="min-w-[3ch] text-right text-xs font-medium tabular-nums text-neutral-700">
+            {signal.value} pts
+          </span>
         </div>
       </div>
-    </div>
-  );
-}
-
-function SortableSignalRow({
-  signal,
-  isFirst,
-  isDropTarget,
-  isLast,
-  onUpdateSignal,
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: signal.id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`bg-white ${isFirst ? "overflow-hidden rounded-t-lg" : ""} ${isLast ? "overflow-hidden rounded-b-lg" : ""} ${
-        !isLast ? "border-b border-neutral-200" : ""
-      } ${isDragging ? "opacity-40" : ""} ${
-        isDropTarget ? "relative before:absolute before:left-5 before:right-5 before:top-0 before:h-0.5 before:bg-emerald-500" : ""
-      }`}
-    >
-      <SignalRowContent
-        signal={signal}
-        onUpdateSignal={onUpdateSignal}
-        dragHandleProps={{ ref: setActivatorNodeRef, ...attributes, ...listeners }}
-      />
     </div>
   );
 }
@@ -2093,11 +2056,11 @@ const GUIDANCE_AGENT_CONTEXT_ITEMS = [
 
 const RANKING_SIGNALS_INFO_TITLE = "How ranking works";
 const RANKING_SIGNALS_INFO_PARAGRAPHS = [
-  "Each signal you enable contributes points to a ticket's total score. The slider controls how much weight that signal carries — higher means it influences the score more. Tickets with the highest total score are served first.",
-  "Drag to reorder signals. The order affects how ties are broken when two tickets have equal scores.",
+  "Distribute 100 points across ticket properties. Set any property to 0 pts to exclude it from scoring.",
+  "Each ticket earns points based on how it matches — for example SLA breaching or an unanswered client reply. Higher total score = served first.",
 ];
 const RANKING_SIGNALS_INFO_FOOTNOTE =
-  "Scores update when any of the signals change on a ticket.";
+  "Scores update when ticket details change. Test a few scenarios in the panel on the right.";
 
 function GuidanceSection({
   guidanceTab,
@@ -2239,52 +2202,22 @@ function GuidanceSection({
 }
 
 function RankingSignalsSection({ signals, onChangeSignals }) {
-  const [activeId, setActiveId] = useState(null);
-  const [overId, setOverId] = useState(null);
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 0,
-      },
-    })
-  );
-  const signalIds = useMemo(() => signals.map((signal) => signal.id), [signals]);
-  const activeSignal = useMemo(
-    () => signals.find((signal) => signal.id === activeId) ?? null,
-    [signals, activeId]
-  );
+  const weightTotal = useMemo(() => getRankingWeightTotal(signals), [signals]);
+  const weightsValid = weightTotal === 100;
 
-  const updateSignal = (signalId, patch) => {
+  const handleSetWeight = (signalId, value) => {
+    const clamped = clampRankingWeight(value);
     onChangeSignals((prev) =>
-      prev.map((signal) => (signal.id === signalId ? { ...signal, ...patch } : signal))
+      prev.map((signal) =>
+        signal.id === signalId ? { ...signal, value: clamped, enabled: true } : signal
+      )
     );
   };
 
-  const handleDragStart = (event) => {
-    setActiveId(event.active.id);
-    setOverId(event.active.id);
-  };
-
-  const handleDragOver = (event) => {
-    setOverId(event.over?.id ?? null);
-  };
-
-  const handleDragEnd = (event) => {
-    const { active, over } = event;
-    setActiveId(null);
-    setOverId(null);
-    if (!active?.id || !over?.id || active.id === over.id) return;
-    onChangeSignals((prev) => {
-      const from = prev.findIndex((signal) => signal.id === active.id);
-      const to = prev.findIndex((signal) => signal.id === over.id);
-      if (from === -1 || to === -1) return prev;
-      return arrayMove(prev, from, to);
-    });
-  };
-
-  const handleDragCancel = () => {
-    setActiveId(null);
-    setOverId(null);
+  const handlePatchSignal = (signalId, patch) => {
+    onChangeSignals((prev) =>
+      prev.map((signal) => (signal.id === signalId ? { ...signal, ...patch } : signal))
+    );
   };
 
   return (
@@ -2321,43 +2254,33 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
           </Tooltip>
         </div>
         <p className="mt-0.5 text-sm text-neutral-500">
-          Control how much each factor influences thread scoring. Drag to reorder by importance.
+          Allocate 100 points across all properties. Set a property to 0 pts to exclude it. Adjust
+          sliders until the total below is 100.
         </p>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
+        {signals.map((signal, index) => (
+          <RankingPropertyRow
+            key={signal.id}
+            signal={signal}
+            isFirst={index === 0}
+            isLast={index === signals.length - 1}
+            onSetWeight={handleSetWeight}
+            onPatchSignal={handlePatchSignal}
+          />
+        ))}
+        <div
+          className={`flex items-center justify-between border-t border-neutral-200 px-5 py-3 text-sm ${
+            weightsValid ? "bg-neutral-50 text-neutral-600" : "bg-amber-50 text-amber-800"
+          }`}
         >
-          <SortableContext items={signalIds} strategy={verticalListSortingStrategy}>
-            {signals.map((signal, index) => (
-              <SortableSignalRow
-                key={signal.id}
-                signal={signal}
-                isFirst={index === 0}
-                isLast={index === signals.length - 1}
-                isDropTarget={activeId && overId === signal.id && activeId !== signal.id}
-                onUpdateSignal={updateSignal}
-              />
-            ))}
-          </SortableContext>
-          <DragOverlay>
-            {activeSignal ? (
-              <div className="rounded-lg border border-emerald-200 bg-white/95 shadow-lg">
-                <SignalRowContent
-                  signal={activeSignal}
-                  isOverlay
-                  onUpdateSignal={updateSignal}
-                />
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+          <span>Total allocated</span>
+          <span className="font-medium tabular-nums">
+            {weightTotal}/100
+            {!weightsValid ? " — adjust points to reach 100 before saving" : ""}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -2859,19 +2782,18 @@ function ConfigPage({
   const [maxActiveThreads, setMaxActiveThreads] = useState(
     initialAgent?.maxActiveThreads ?? "No limit"
   );
-  const [calendarAvailability, setCalendarAvailability] = useState(() => {
+  const [calendarAvailabilityEnabled, setCalendarAvailabilityEnabled] = useState(() => {
     const agent = initialAgent;
-    if (!agent) return "Ignore";
-    if (
-      agent.calendarAvailability &&
-      CALENDAR_AVAILABILITY_OPTIONS.includes(agent.calendarAvailability)
-    ) {
-      return agent.calendarAvailability;
+    if (!agent) return false;
+    if (typeof agent.calendarAvailabilityEnabled === "boolean") {
+      return agent.calendarAvailabilityEnabled;
     }
-    if (agent.calendarAvailabilityEnabled === false) return "Ignore";
-    const window = agent.calendarAvailabilityWindow;
-    if (window && CALENDAR_AVAILABILITY_OPTIONS.includes(window)) return window;
-    return "Ignore";
+    if (agent.calendarAvailability === "Ignore") return false;
+    if (agent.calendarAvailability) return true;
+    if (agent.calendarAvailabilityWindow && agent.calendarAvailabilityWindow !== "Ignore") {
+      return true;
+    }
+    return false;
   });
   const [fallbackStatus, setFallbackStatus] = useState(
     initialAgent?.fallbackStatus ?? "Escalation"
@@ -3076,7 +2998,13 @@ function ConfigPage({
       : teamScopes.length === 0 ||
         teamScopes.some((scope) => !isTeamScopeConfigured(scope))) ||
     !agentDisplayName.trim();
-  const canSave = !hasErrors && !missingRequired;
+  const rankingWeightTotal = useMemo(
+    () => getRankingWeightTotal(rankingSignals),
+    [rankingSignals]
+  );
+  const rankingWeightsValid =
+    isRoute || dispatchMode !== "Self-serve" || rankingWeightTotal === 100;
+  const canSave = !hasErrors && !missingRequired && rankingWeightsValid;
 
   const updateTeamScope = (id, patch) => {
     setTeamScopes((prev) =>
@@ -3118,7 +3046,12 @@ function ConfigPage({
       teamScopes: isRoute ? undefined : teamScopes,
       dispatchMode: isRoute ? undefined : dispatchMode,
       maxActiveThreads: isRoute ? undefined : maxActiveThreads,
-      calendarAvailability: isRoute ? undefined : calendarAvailability,
+      calendarAvailabilityEnabled: isRoute ? undefined : calendarAvailabilityEnabled,
+      calendarAvailability: isRoute
+        ? undefined
+        : calendarAvailabilityEnabled
+          ? "Today and tomorrow"
+          : "Ignore",
       excludeTechs: [],
       excludeTechsEnabled: false,
       skipFlowAssignedTickets: primaryScope?.skipFlowAssignedTickets ?? false,
@@ -3587,16 +3520,19 @@ function ConfigPage({
               <Row
                 label="Calendar availability"
                 subcopy={
-                  calendarAvailability === "Ignore"
-                    ? "The agent will not check calendar availability when assigning techs."
-                    : "Only assign techs with open time in Outlook."
+                  calendarAvailabilityEnabled
+                    ? "Only assign techs with open time in Outlook."
+                    : "The agent will not check calendar availability when assigning techs."
                 }
+                align="center"
               >
-                <Select
-                  value={calendarAvailability}
-                  options={CALENDAR_AVAILABILITY_OPTIONS}
-                  onChange={setCalendarAvailability}
-                />
+                <div className="inline-flex shrink-0 items-center">
+                  <Switch
+                    size="sm"
+                    checked={calendarAvailabilityEnabled}
+                    onCheckedChange={setCalendarAvailabilityEnabled}
+                  />
+                </div>
               </Row>
               <Row
                 label="Fallback status"
@@ -3683,6 +3619,11 @@ function ConfigPage({
           {hasErrors && (
             <div className="text-xs text-red-600">
               Resolve the highlighted conflicts before saving.
+            </div>
+          )}
+          {!rankingWeightsValid && !hasErrors && (
+            <div className="text-xs text-amber-700">
+              Thread scoring must allocate exactly 100 points across all properties.
             </div>
           )}
           <div className="flex w-full items-center justify-end gap-3">

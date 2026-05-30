@@ -33,7 +33,6 @@ import {
 import FlowsPage from "./components/flows/FlowsPage";
 import SlasPage from "./components/slas/SlasPage";
 import TestAgentPanel from "./components/test-agent/TestAgentPanel";
-import { getRankingWeightTotal } from "./components/test-agent/testAgentThreads";
 import {
   ArrowLeft,
   Activity,
@@ -1976,10 +1975,10 @@ function buildAgentInstructionsFromSignals(signals) {
         ? `, filter is ${(signal.selectedOptions ?? []).join(", ") || "none"}`
         : `, filter is ${signal.selectedOption}`
       : "";
-    return `${index + 1}. ${signal.name}: ${signal.value} points${optionText}.`;
+    return `${index + 1}. ${signal.name}: weight ${signal.value}${optionText}.`;
   });
 
-  return `You are a dispatch ranking agent. Rank tickets by urgency based on these configured ticket properties (${getRankingWeightTotal(signals)}/100 points allocated):
+  return `You are a dispatch ranking agent. Rank tickets by urgency based on these configured ticket properties:
 ${signalLines.join("\n")}`;
 }
 
@@ -2028,7 +2027,7 @@ function RankingPropertyRow({ signal, onSetWeight, onPatchSignal, isFirst, isLas
         <p className="mt-0.5 text-sm text-neutral-500">{signal.description}</p>
       </div>
 
-      <div className="w-[180px] shrink-0">
+      <div className="w-[200px] shrink-0">
         <div className="mt-1 flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <Slider
@@ -2039,8 +2038,8 @@ function RankingPropertyRow({ signal, onSetWeight, onPatchSignal, isFirst, isLas
               onValueChange={([value]) => onSetWeight(signal.id, value)}
             />
           </div>
-          <span className="min-w-[3ch] text-right text-xs font-medium tabular-nums text-neutral-700">
-            {signal.value} pts
+          <span className="shrink-0 text-right text-xs tabular-nums text-neutral-500">
+            {signal.value}/100
           </span>
         </div>
       </div>
@@ -2060,8 +2059,8 @@ const GUIDANCE_AGENT_CONTEXT_ITEMS = [
 
 const RANKING_SIGNALS_INFO_TITLE = "How ranking works";
 const RANKING_SIGNALS_INFO_PARAGRAPHS = [
-  "Distribute 100 points across ticket properties. Set any property to 0 pts to exclude it from scoring.",
-  "Each ticket earns points based on how it matches — for example SLA breaching or an unanswered client reply. Higher total score = served first.",
+  "Set how much each ticket property matters for ranking. Set a property to 0 to exclude it from scoring.",
+  "Each ticket earns a score based on how it matches — for example SLA breaching or an unanswered client reply. Higher total score = served first.",
 ];
 const RANKING_SIGNALS_INFO_FOOTNOTE =
   "Scores update when ticket details change. Test a few scenarios in the panel on the right.";
@@ -2206,9 +2205,6 @@ function GuidanceSection({
 }
 
 function RankingSignalsSection({ signals, onChangeSignals }) {
-  const weightTotal = useMemo(() => getRankingWeightTotal(signals), [signals]);
-  const weightsValid = weightTotal === 100;
-
   const handleSetWeight = (signalId, value) => {
     const clamped = clampRankingWeight(value);
     onChangeSignals((prev) =>
@@ -2258,8 +2254,7 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
           </Tooltip>
         </div>
         <p className="mt-0.5 text-sm text-neutral-500">
-          Allocate 100 points across all properties. Set a property to 0 pts to exclude it. Adjust
-          sliders until the total below is 100.
+          Adjust each property&apos;s importance. Set a property to 0 to exclude it from scoring.
         </p>
       </div>
 
@@ -2274,17 +2269,6 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
             onPatchSignal={handlePatchSignal}
           />
         ))}
-        <div
-          className={`flex items-center justify-between border-t border-neutral-200 px-5 py-3 text-sm ${
-            weightsValid ? "bg-neutral-50 text-neutral-600" : "bg-amber-50 text-amber-800"
-          }`}
-        >
-          <span>Total allocated</span>
-          <span className="font-medium tabular-nums">
-            {weightTotal}/100
-            {!weightsValid ? " — adjust points to reach 100 before saving" : ""}
-          </span>
-        </div>
       </div>
     </div>
   );
@@ -2998,15 +2982,8 @@ function ConfigPage({
       : teamScopes.length === 0 ||
         teamScopes.some((scope) => !isTeamScopeConfigured(scope))) ||
     !agentDisplayName.trim();
-  const rankingWeightTotal = useMemo(
-    () => getRankingWeightTotal(rankingSignals),
-    [rankingSignals]
-  );
-  const rankingWeightsValid =
-    isRoute || dispatchMode !== "Self-serve" || rankingWeightTotal === 100;
   const multiTeamScopesValid = teamScopes.every(isMultiTeamScopeValid);
-  const canSave =
-    !hasErrors && !missingRequired && rankingWeightsValid && multiTeamScopesValid;
+  const canSave = !hasErrors && !missingRequired && multiTeamScopesValid;
 
   const updateTeamScope = (id, patch) => {
     setTeamScopes((prev) =>
@@ -3620,11 +3597,6 @@ function ConfigPage({
           {hasErrors && (
             <div className="text-xs text-red-600">
               Resolve the highlighted conflicts before saving.
-            </div>
-          )}
-          {!rankingWeightsValid && !hasErrors && (
-            <div className="text-xs text-amber-700">
-              Thread scoring must allocate exactly 100 points across all properties.
             </div>
           )}
           <div className="flex w-full items-center justify-end gap-3">

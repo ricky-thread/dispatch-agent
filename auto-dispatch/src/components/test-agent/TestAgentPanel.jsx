@@ -12,7 +12,6 @@ import ThreadCard from "../ThreadCard";
 import {
   MAX_TEST_THREADS,
   computeTestAgentRanking,
-  getRankingWeightTotal,
   TEST_AGENT_THREADS,
   getTestAgentThread,
   groupThreadIdsByTeam,
@@ -374,16 +373,10 @@ export default function TestAgentPanel({
 
   const rankingDisplayMode = outputMode === "llm" ? "llm" : "points";
   const isAutoAssignMode = rankingDisplayMode === "llm";
-  const rankingWeightTotal = useMemo(
-    () => getRankingWeightTotal(rankingSignals),
-    [rankingSignals]
-  );
-  const showPointsBudgetWarning =
-    !isAutoAssignMode && rankingWeightTotal !== 100;
 
   const rankedResultsHeader = isAutoAssignMode
     ? "Dispatch Agent's ranking."
-    : "Points-based ranking.";
+    : "Weight-based ranking.";
 
   const showFeedbackBanner =
     isAutoAssignMode &&
@@ -555,16 +548,6 @@ export default function TestAgentPanel({
             onThumbsDown={handleThumbsDown}
             onDismiss={() => setFeedbackDismissed(true)}
           />
-        ) : null}
-
-        {showPointsBudgetWarning ? (
-          <div
-            role="status"
-            className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm leading-snug text-amber-900"
-          >
-            Allocated {rankingWeightTotal}/100 — ranking preview only. Adjust points to 100
-            before saving this agent.
-          </div>
         ) : null}
 
         <TestAgentFeedbackModal

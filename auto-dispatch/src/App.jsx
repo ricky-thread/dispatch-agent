@@ -71,6 +71,7 @@ import {
   Target,
   Trash2,
   TriangleAlert,
+  ArrowUpRight,
   Users,
   Wallet,
   Wand2,
@@ -3148,7 +3149,7 @@ function ConfigPage({
         <Section title="Agent identity">
           <Row
             label="Name your agent"
-            subcopy="You can always change this in settings later"
+            subcopy="How your team identifies this agent"
           >
             <input
               type="text"
@@ -3512,9 +3513,17 @@ function ConfigPage({
               <Row
                 label="Calendar availability"
                 subcopy={
-                  calendarAvailabilityEnabled
-                    ? "Only assign techs with open time in Outlook."
-                    : "The agent will not check calendar availability when assigning techs."
+                  <>
+                    Check Planner for open time before assigning a tech.{" "}
+                    <a
+                      href="#"
+                      className="inline-flex items-center gap-0.5 text-teal-600 hover:text-teal-700"
+                      onClick={(event) => event.preventDefault()}
+                    >
+                      Connect to Outlook
+                      <ArrowUpRight className="size-3.5 shrink-0" strokeWidth={2.25} />
+                    </a>
+                  </>
                 }
                 align="center"
                 noBorder

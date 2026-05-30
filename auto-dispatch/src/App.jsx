@@ -1477,6 +1477,7 @@ function ScopeTeamConditionsEditor({
             <span className="border-r border-neutral-300 px-2 py-[3px] text-neutral-700">is</span>
             <button
               type="button"
+              data-condition-menu-trigger=""
               onClick={() =>
                 setOpenConditionMenu((prev) =>
                   prev?.kind === "value" &&
@@ -1502,7 +1503,10 @@ function ScopeTeamConditionsEditor({
             </button>
 
             {valueMenuOpen ? (
-              <div className="absolute left-0 top-full z-[120] mt-1 w-[320px] max-h-[260px] overflow-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+              <div
+                data-condition-menu=""
+                className="absolute left-0 top-full z-[120] mt-1 w-fit max-w-[160px] max-h-[260px] overflow-y-auto overflow-x-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl"
+              >
                 {valueOptions.map((value) => {
                   const checked = (condition.valueIds || []).includes(value);
                   const optionDisabled = disabledValues.has(value) && !checked;
@@ -1512,7 +1516,7 @@ function ScopeTeamConditionsEditor({
                       type="button"
                       disabled={optionDisabled}
                       onClick={() => handleToggleValue(condition, value)}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] ${
+                      className={`flex max-w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] ${
                         optionDisabled
                           ? "cursor-not-allowed text-neutral-300"
                           : "text-neutral-900 hover:bg-neutral-50"
@@ -1531,7 +1535,7 @@ function ScopeTeamConditionsEditor({
                           <Check size={10} className="text-white" strokeWidth={3} />
                         ) : null}
                       </span>
-                      <span>{value}</span>
+                      <span className="min-w-0 truncate">{value}</span>
                     </button>
                   );
                 })}
@@ -1545,6 +1549,7 @@ function ScopeTeamConditionsEditor({
         <div className="relative">
           <button
             type="button"
+            data-condition-menu-trigger=""
             onClick={() =>
               setOpenConditionMenu((prev) =>
                 prev?.kind === "field" && prev.team === team
@@ -1558,7 +1563,10 @@ function ScopeTeamConditionsEditor({
             Add condition
           </button>
           {openConditionMenu?.kind === "field" && openConditionMenu.team === team ? (
-            <div className="absolute left-0 top-full z-[120] mt-1 w-[320px] rounded-xl border border-neutral-200 bg-white p-2 shadow-xl">
+            <div
+              data-condition-menu=""
+              className="absolute left-0 top-full z-[120] mt-1 w-fit max-w-[160px] overflow-x-hidden rounded-xl border border-neutral-200 bg-white p-2 shadow-xl"
+            >
               {availableFilterOptions.map((filterType) => {
                 const FilterIcon = SCOPE_FILTER_METADATA[filterType]?.icon || FileText;
                 return (
@@ -1566,10 +1574,10 @@ function ScopeTeamConditionsEditor({
                     key={filterType}
                     type="button"
                     onClick={() => handleAddFilter(filterType)}
-                    className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm text-neutral-900 hover:bg-neutral-50"
+                    className="flex max-w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm text-neutral-900 hover:bg-neutral-50"
                   >
-                    <FilterIcon size={16} className="text-neutral-500" />
-                    <span>{filterType}</span>
+                    <FilterIcon size={16} className="shrink-0 text-neutral-500" />
+                    <span className="min-w-0 truncate">{filterType}</span>
                   </button>
                 );
               })}
@@ -1588,7 +1596,6 @@ function AgentScopeTeamCard({
   onUpdate,
   onRemove,
 }) {
-  const conditionEditorRef = useRef(null);
   const [openConditionMenu, setOpenConditionMenu] = useState(null);
   const teams = normalizeSelections(scope.teams ?? scope.team);
   const teamConditions = scope.teamConditions || {};
@@ -1639,8 +1646,11 @@ function AgentScopeTeamCard({
   useEffect(() => {
     if (!openConditionMenu) return undefined;
     const handleMouseDown = (event) => {
-      if (!conditionEditorRef.current) return;
-      if (conditionEditorRef.current.contains(event.target)) return;
+      const target = event.target;
+      if (target instanceof Element) {
+        if (target.closest("[data-condition-menu]")) return;
+        if (target.closest("[data-condition-menu-trigger]")) return;
+      }
       setOpenConditionMenu(null);
     };
     const handleEsc = (event) => {
@@ -1735,7 +1745,7 @@ function AgentScopeTeamCard({
                 dropdownClassName="w-[220px]"
               />
             </div>
-            <div ref={conditionEditorRef} className="mt-3 min-w-0">
+            <div className="mt-3 min-w-0">
               {teams.length === 0 ? null : isMultiTeam ? (
                 <div className="space-y-3">
                   {teams.map((team) => (
@@ -3517,7 +3527,7 @@ function ConfigPage({
                     Check Planner for open time before assigning a tech.{" "}
                     <a
                       href="#"
-                      className="inline-flex items-center gap-0.5 text-teal-600 hover:text-teal-700"
+                      className="inline-flex items-center gap-0.5 text-[#00BB99] hover:text-[#00967A]"
                       onClick={(event) => event.preventDefault()}
                     >
                       Connect to Outlook

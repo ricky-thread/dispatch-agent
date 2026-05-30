@@ -81,7 +81,10 @@ import {
 
 import {
   BOARDS,
+  BOARD_DISPATCH_STATUSES,
+  DISPATCH_STATUS_OPTIONS,
   STATUSES,
+  TEAMS,
   HOUR_OPTIONS,
   ROUTE_CONDITION_FIELDS,
   ROUTE_CONDITION_VALUES,
@@ -109,23 +112,8 @@ function formatLastPublished(date) {
   });
   return `Last published ${month} ${day} at ${time}`;
 }
-const SCOPE_TEAM_OPTIONS = ["Team Red", "Team Blue", "Team Green", "Network Ops", "Procurement"];
 const SCOPE_BOARD_OPTIONS = ["Help Desk", "Network", "Projects", "Voice"];
-const SCOPE_STATUS_OPTIONS = [
-  "New",
-  "In Progress",
-  "Waiting Client Response",
-  "On Hold",
-  "Scheduled",
-];
-const SCOPE_STATUS_FILTER = "Status";
-const SCOPE_STATUS_MODES = ["Include only", "Exclude"];
 const SCOPE_FILTER_METADATA = {
-  [SCOPE_STATUS_FILTER]: {
-    icon: Activity,
-    values: SCOPE_STATUS_OPTIONS,
-    isStatus: true,
-  },
   "Company type": {
     icon: Building2,
     values: ["Managed Service", "Break Fix", "Internal", "Government"],
@@ -1180,11 +1168,8 @@ function Section({ title, subcopy, children }) {
 }
 
 function isTeamScopeConfigured(scope) {
-  return Boolean(scope.team && scope.view);
-}
-
-function isStatusCondition(condition) {
-  return condition?.filterType === SCOPE_STATUS_FILTER;
+  const teams = normalizeSelections(scope.teams ?? scope.team);
+  return Boolean(teams.length > 0 && scope.view);
 }
 
 function createTeamCondition(initial = {}) {
@@ -1196,339 +1181,469 @@ function createTeamCondition(initial = {}) {
   return {
     id: initial.id ?? newConditionId(),
     filterType,
-    operator:
-      initial.operator ?? (isStatusCondition({ filterType }) ? "Include only" : "is"),
+    operator: "is",
     valueIds: Array.isArray(initial.valueIds) ? initial.valueIds : fallbackValue,
   };
 }
 
-function getScopeStatus(scope) {
-  const statusCondition = (scope.conditions || []).find(isStatusCondition);
-  if (statusCondition) {
-    const mode = statusCondition.operator === "Exclude" ? "Exclude" : "Include only";
-    return {
-      statusMode: mode,
-      statuses: statusCondition.valueIds || [],
-    };
+function getScopeFilterTypes(scope) {
+  const types = new Set();
+  const teams = normalizeSelections(scope.teams ?? scope.team);
+  teams.forEach((team) => {
+    (scope.teamConditions?.[team] || []).forEach((condition) => {
+      types.add(condition.filterType);
+    });
+  });
+  if (types.size === 0 && Array.isArray(scope.conditions)) {
+    scope.conditions.forEach((condition) => {
+      if (condition.filterType && condition.filterType !== "Status") {
+        types.add(condition.filterType);
+      }
+    });
   }
-  return {
-    statusMode: scope.statusMode ?? "Include only",
-    statuses: scope.statuses || [],
-  };
+  return [...types];
 }
 
-function getScopeFilters(scope) {
-  return (scope.conditions || []).filter((condition) => !isStatusCondition(condition));
+function syncTeamConditionsWithTeams(teams, teamConditions = {}) {
+  const filterTypes = getScopeFilterTypes({ teams, teamConditions, conditions: [] });
+  const next = {};
+  teams.forEach((team) => {
+    const existing = teamConditions[team] || [];
+    const byType = new Map(existing.map((condition) => [condition.filterType, condition]));
+    next[team] = filterTypes.map(
+      (filterType) => byType.get(filterType) ?? createTeamCondition({ filterType, valueIds: [] })
+    );
+  });
+  return next;
 }
 
-function syncScopeStatusFields(scope) {
-  const { statusMode, statuses } = getScopeStatus(scope);
-  return { ...scope, statusMode, statuses };
+function migrateLegacyScopeConditions(initial = {}) {
+  const teams = normalizeSelections(initial.teams ?? initial.team);
+  if (initial.teamConditions && typeof initial.teamConditions === "object") {
+    return syncTeamConditionsWithTeams(teams, initial.teamConditions);
+  }
+
+  const legacyConditions = Array.isArray(initial.conditions) ? initial.conditions : [];
+  const filterConditions = legacyConditions
+    .filter((condition) => condition.filterType && condition.filterType !== "Status")
+    .map((condition) => createTeamCondition(condition));
+
+  const teamConditions = {};
+  if (teams.length > 0) {
+    teams.forEach((team) => {
+      teamConditions[team] = filterConditions.map((condition) =>
+        createTeamCondition({
+          filterType: condition.filterType,
+          valueIds: [...(condition.valueIds || [])],
+        })
+      );
+    });
+  }
+  return syncTeamConditionsWithTeams(teams, teamConditions);
+}
+
+function getBoardStatusOptions(board) {
+  if (!board) return [];
+  return BOARD_DISPATCH_STATUSES[board] ?? DISPATCH_STATUS_OPTIONS;
+}
+
+function getBoardFallbackStatusOptions(board) {
+  if (!board) return [];
+  const statuses = getBoardStatusOptions(board);
+  return ["No change", ...statuses.filter((status) => status !== "No change")];
+}
+
+function resolveScopeStatuses(initial = {}) {
+  const view = initial.view ?? initial.board ?? "";
+  if (!view) return [];
+
+  let statuses = [];
+  if (Array.isArray(initial.statuses)) {
+    statuses = initial.statuses.filter(Boolean);
+  } else if (typeof initial.status === "string" && initial.status) {
+    statuses = [initial.status];
+  } else {
+    const legacyConditions = Array.isArray(initial.conditions) ? initial.conditions : [];
+    const statusCondition = legacyConditions.find((condition) => condition.filterType === "Status");
+    if (Array.isArray(statusCondition?.valueIds)) {
+      statuses = statusCondition.valueIds.filter(Boolean);
+    }
+  }
+
+  const options = getBoardStatusOptions(view);
+  return statuses.filter((status) => options.includes(status));
+}
+
+function resolveScopeFallbackStatus(initial = {}) {
+  const view = initial.view ?? initial.board ?? "";
+  if (!view) return "";
+
+  const options = getBoardFallbackStatusOptions(view);
+  const fallbackStatus = initial.fallbackStatus ?? "";
+  return options.includes(fallbackStatus) ? fallbackStatus : "";
 }
 
 function createTeamScope(id, initial = {}) {
-  const team = initial.team ?? "";
+  const teams = normalizeSelections(initial.teams ?? initial.team);
   const view = initial.view ?? initial.board ?? "";
-  const configured = isTeamScopeConfigured({ team, view });
-  let conditions = Array.isArray(initial.conditions)
-    ? initial.conditions.map((condition) => createTeamCondition(condition))
-    : [];
-  const hasStatusCondition = conditions.some(isStatusCondition);
-  const legacyStatuses = initial.statuses ?? [];
-  if (!hasStatusCondition && legacyStatuses.length > 0) {
-    conditions = [
-      ...conditions,
-      createTeamCondition({
-        filterType: SCOPE_STATUS_FILTER,
-        operator: initial.statusMode ?? "Include only",
-        valueIds: legacyStatuses,
-      }),
-    ];
-  }
-  return syncScopeStatusFields({
+  const configured = isTeamScopeConfigured({ teams, view });
+  const teamConditions = migrateLegacyScopeConditions(initial);
+
+  return {
     id,
-    team,
+    teams,
     view,
-    conditions,
-    statusMode: initial.statusMode ?? "Include only",
-    statuses: initial.statuses ?? [],
+    teamConditions,
+    statuses: resolveScopeStatuses({ ...initial, view }),
+    fallbackStatus: resolveScopeFallbackStatus({ ...initial, view }),
     skipFlowAssignedTickets: initial.skipFlowAssignedTickets ?? false,
     expanded: initial.expanded ?? !configured,
+  };
+}
+
+function getDisabledValuesForTeamField(scope, team, filterType) {
+  const disabled = new Set();
+  const teams = normalizeSelections(scope.teams ?? scope.team);
+  teams.forEach((otherTeam) => {
+    if (otherTeam === team) return;
+    (scope.teamConditions?.[otherTeam] || [])
+      .filter((condition) => condition.filterType === filterType)
+      .forEach((condition) => {
+        (condition.valueIds || []).forEach((value) => disabled.add(value));
+      });
   });
+  return disabled;
 }
 
-function statusSetsEqual(statusA, statusB) {
-  if (statusA.statusMode !== statusB.statusMode) return false;
-  const a = statusA.statuses;
-  const b = statusB.statuses;
-  if (a.length === 0 && b.length === 0) return true;
-  if (a.length !== b.length) return false;
-  const sortedA = [...a].sort();
-  const sortedB = [...b].sort();
-  return sortedA.every((value, index) => value === sortedB[index]);
-}
+function isMultiTeamScopeValid(scope) {
+  const teams = normalizeSelections(scope.teams ?? scope.team);
+  if (teams.length < 2) return true;
 
-/** Broad section includes every status the narrow section matches (empty = all statuses). */
-function statusBroadContainsNarrow(broadScope, narrowScope) {
-  const broad = getScopeStatus(broadScope);
-  const narrow = getScopeStatus(narrowScope);
-  if (broad.statusMode !== narrow.statusMode) return false;
-  if (broad.statuses.length === 0) return true;
-  if (narrow.statuses.length === 0) return false;
-  return narrow.statuses.every((status) => broad.statuses.includes(status));
-}
+  const allConditions = teams.flatMap((team) => scope.teamConditions?.[team] || []);
+  if (allConditions.length === 0) return false;
+  if (allConditions.some((condition) => !(condition.valueIds || []).length)) return false;
 
-function scopeFilterCompareKey(condition) {
-  const valueIds = [...(condition.valueIds || [])].sort();
-  return `${condition.filterType}|${condition.operator}|${valueIds.join("\0")}`;
-}
-
-function scopeFiltersEqual(scopeA, scopeB) {
-  const filtersA = getScopeFilters(scopeA)
-    .map(scopeFilterCompareKey)
-    .sort();
-  const filtersB = getScopeFilters(scopeB)
-    .map(scopeFilterCompareKey)
-    .sort();
-  if (filtersA.length !== filtersB.length) return false;
-  return filtersA.every((key, index) => key === filtersB[index]);
-}
-
-function isScopeDuplicate(scopeA, scopeB) {
-  if (!scopeBoardsMatch(scopeA, scopeB)) return false;
-  if (!statusSetsEqual(getScopeStatus(scopeA), getScopeStatus(scopeB))) return false;
-  return scopeFiltersEqual(scopeA, scopeB);
-}
-
-function isScopeSuperset(broadScope, narrowScope) {
-  if (!scopeBoardsMatch(broadScope, narrowScope)) return false;
-  if (!statusBroadContainsNarrow(broadScope, narrowScope)) return false;
-  if (isScopeDuplicate(broadScope, narrowScope)) return false;
-
-  const broadHasFilters = hasScopeConditions(broadScope);
-  const narrowHasFilters = hasScopeConditions(narrowScope);
-
-  if (narrowHasFilters && !broadHasFilters) return true;
-
-  if (!narrowHasFilters && !broadHasFilters) {
-    const broad = getScopeStatus(broadScope);
-    const narrow = getScopeStatus(narrowScope);
-    if (narrow.statuses.length > 0 && broad.statuses.length === 0) return true;
-    if (narrow.statuses.length > 0 && broad.statuses.length > 0) {
-      const narrowSet = new Set(narrow.statuses);
-      return (
-        narrow.statuses.every((status) => broad.statuses.includes(status)) &&
-        broad.statuses.some((status) => !narrowSet.has(status))
+  const filterTypes = getScopeFilterTypes(scope);
+  for (const filterType of filterTypes) {
+    const seenValues = new Set();
+    for (const team of teams) {
+      const condition = (scope.teamConditions?.[team] || []).find(
+        (entry) => entry.filterType === filterType
       );
+      if (!condition) continue;
+      for (const value of condition.valueIds || []) {
+        if (seenValues.has(value)) return false;
+        seenValues.add(value);
+      }
     }
   }
-
-  return false;
+  return true;
 }
 
-function hasScopeConditions(scope) {
-  return getScopeFilters(scope).length > 0;
+function addMirroredCondition(teamConditions, teams, filterType) {
+  const next = { ...teamConditions };
+  teams.forEach((team) => {
+    const existing = next[team] || [];
+    if (existing.some((condition) => condition.filterType === filterType)) return;
+    next[team] = [...existing, createTeamCondition({ filterType, valueIds: [] })];
+  });
+  return next;
 }
 
-function effectiveHasFilterConditions(scope, pendingCondition) {
-  if (hasScopeConditions(scope)) return true;
-  if (!pendingCondition || isStatusCondition(pendingCondition)) return false;
-  return (pendingCondition.valueIds || []).length > 0;
+function removeMirroredCondition(teamConditions, teams, filterType) {
+  const next = { ...teamConditions };
+  teams.forEach((team) => {
+    next[team] = (next[team] || []).filter((condition) => condition.filterType !== filterType);
+  });
+  return next;
 }
 
-function scopeBoardsMatch(scopeA, scopeB) {
-  return Boolean(scopeA.view && scopeA.view === scopeB.view);
+function updateTeamConditionInScope(teamConditions, team, conditionId, patch) {
+  return {
+    ...teamConditions,
+    [team]: (teamConditions[team] || []).map((condition) =>
+      condition.id === conditionId ? { ...condition, ...patch } : condition
+    ),
+  };
 }
 
-function computeScopeWarningsBySectionId(teamScopes) {
-  const warnings = {};
+function ScopeCardHeaderLabel({ scope }) {
+  const teams = normalizeSelections(scope.teams ?? scope.team);
+  const hasTeams = teams.length > 0;
+  const hasBoard = Boolean(scope.view);
 
-  const addWarning = (scopeId, warning) => {
-    if (!warnings[scopeId]) warnings[scopeId] = [];
-    warnings[scopeId].push(warning);
+  if (!hasTeams && !hasBoard) {
+    return <span className="font-normal text-[#605F68]">Select team</span>;
+  }
+
+  return (
+    <>
+      {hasTeams ? (
+        <span className="font-medium text-neutral-900">{teams.join(", ")}</span>
+      ) : (
+        <span className="font-normal text-[#605F68]">Select team</span>
+      )}
+      <span className="text-[#605F68]"> • </span>
+      <span className="font-normal text-[#605F68]">
+        {hasBoard ? scope.view : "Select board"}
+      </span>
+    </>
+  );
+}
+
+function MutualExclusivityNote() {
+  return (
+    <p className="mt-3 flex items-start gap-1.5 text-sm leading-snug text-sky-700">
+      <Info size={14} className="mt-0.5 shrink-0 text-sky-600" strokeWidth={2} aria-hidden />
+      <span>Conditions set for each team must be mutually exclusive.</span>
+    </p>
+  );
+}
+
+function ScopeTeamConditionsEditor({
+  scope,
+  team,
+  teams,
+  conditions = [],
+  teamConditions,
+  onUpdateTeamConditions,
+  openConditionMenu,
+  setOpenConditionMenu,
+}) {
+  const activeFilterTypes = new Set(getScopeFilterTypes({ teams, teamConditions }));
+  const availableFilterOptions = SCOPE_FILTER_OPTIONS.filter(
+    (filterType) => !activeFilterTypes.has(filterType)
+  );
+  const isMultiTeam = teams.length >= 2;
+  const disabledValuesFor = (filterType) =>
+    isMultiTeam ? getDisabledValuesForTeamField(scope, team, filterType) : new Set();
+
+  const handleAddFilter = (filterType) => {
+    onUpdateTeamConditions(addMirroredCondition(teamConditions, teams, filterType));
+    setOpenConditionMenu(null);
   };
 
-  for (let i = 0; i < teamScopes.length; i += 1) {
-    for (let j = i + 1; j < teamScopes.length; j += 1) {
-      const scopeA = teamScopes[i];
-      const scopeB = teamScopes[j];
+  const handleRemoveCondition = (condition) => {
+    onUpdateTeamConditions(
+      removeMirroredCondition(teamConditions, teams, condition.filterType)
+    );
+  };
 
-      if (isScopeDuplicate(scopeA, scopeB)) {
-        addWarning(scopeA.id, {
-          type: "duplicate",
-          teamName: scopeB.team || "another section",
-        });
-        addWarning(scopeB.id, {
-          type: "duplicate",
-          teamName: scopeA.team || "another section",
-        });
-        continue;
-      }
+  const handleToggleValue = (condition, value) => {
+    const disabled = disabledValuesFor(condition.filterType);
+    if (disabled.has(value) && !(condition.valueIds || []).includes(value)) return;
+    const current = condition.valueIds || [];
+    const next = current.includes(value)
+      ? current.filter((entry) => entry !== value)
+      : [...current, value];
+    onUpdateTeamConditions(
+      updateTeamConditionInScope(teamConditions, team, condition.id, { valueIds: next })
+    );
+  };
 
-      if (isScopeSuperset(scopeB, scopeA)) {
-        addWarning(scopeB.id, {
-          type: "superset",
-          teamName: scopeA.team || "another section",
-        });
-      } else if (isScopeSuperset(scopeA, scopeB)) {
-        addWarning(scopeA.id, {
-          type: "superset",
-          teamName: scopeB.team || "another section",
-        });
-      }
-    }
-  }
+  const conditionValueLabel = (condition) => {
+    const values = condition.valueIds || [];
+    if (values.length === 0) return "Select";
+    if (values.length === 1) return values[0];
+    return `${values.length} selected`;
+  };
 
-  return warnings;
-}
+  const menuTeam = openConditionMenu?.team;
+  const menuConditionId = openConditionMenu?.conditionId;
 
-function formatScopeWarningMessage(warning) {
-  if (warning.type === "duplicate") {
-    return `Same scope as ${warning.teamName} — tickets may dispatch to both teams. Add conditions to separate.`;
-  }
-  return `Includes all tickets from ${warning.teamName}'s scope. Add conditions here to separate.`;
-}
-
-function ScopeWarningNote({ message }) {
   return (
-    <p
-      role="status"
-      aria-live="polite"
-      className="flex items-start gap-1.5 text-sm leading-snug text-amber-700"
-    >
-      <TriangleAlert
-        size={14}
-        className="mt-0.5 shrink-0 text-amber-600"
-        strokeWidth={2}
-        aria-hidden
-      />
-      <span>{message}</span>
-    </p>
+    <div className="relative flex flex-wrap items-center gap-2">
+      {conditions.map((condition) => {
+        const filterMeta = SCOPE_FILTER_METADATA[condition.filterType];
+        const FilterIcon = filterMeta?.icon || FileText;
+        const valueOptions = filterMeta?.values || [];
+        const disabledValues = disabledValuesFor(condition.filterType);
+        const valueMenuOpen =
+          openConditionMenu?.kind === "value" &&
+          menuTeam === team &&
+          menuConditionId === condition.id;
+        const hasEmptyValue = !(condition.valueIds || []).length;
+
+        return (
+          <div
+            key={condition.id}
+            className="relative inline-flex h-6 items-center rounded-md border border-neutral-300 bg-white text-[12px] text-neutral-800"
+          >
+            <span className="inline-flex items-center gap-1 border-r border-neutral-300 px-2 py-[3px]">
+              <FilterIcon size={12} className="text-neutral-500" />
+              <span>{condition.filterType}</span>
+            </span>
+            <span className="border-r border-neutral-300 px-2 py-[3px] text-neutral-700">is</span>
+            <button
+              type="button"
+              onClick={() =>
+                setOpenConditionMenu((prev) =>
+                  prev?.kind === "value" &&
+                  prev.team === team &&
+                  prev.conditionId === condition.id
+                    ? null
+                    : { kind: "value", team, conditionId: condition.id }
+                )
+              }
+              className={`max-w-[150px] truncate border-r border-neutral-300 px-2 py-[3px] text-left transition-colors hover:bg-neutral-50 ${
+                hasEmptyValue ? "text-neutral-400" : "text-neutral-900"
+              }`}
+            >
+              {conditionValueLabel(condition)}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRemoveCondition(condition)}
+              className="px-1.5 text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-700"
+              aria-label="Remove condition"
+            >
+              <X size={12} />
+            </button>
+
+            {valueMenuOpen ? (
+              <div className="absolute left-0 top-full z-[120] mt-1 w-[320px] max-h-[260px] overflow-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+                {valueOptions.map((value) => {
+                  const checked = (condition.valueIds || []).includes(value);
+                  const optionDisabled = disabledValues.has(value) && !checked;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      disabled={optionDisabled}
+                      onClick={() => handleToggleValue(condition, value)}
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] ${
+                        optionDisabled
+                          ? "cursor-not-allowed text-neutral-300"
+                          : "text-neutral-900 hover:bg-neutral-50"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
+                          checked
+                            ? "border-emerald-500 bg-emerald-500"
+                            : optionDisabled
+                              ? "border-neutral-200 bg-neutral-50"
+                              : "border-neutral-300 bg-white"
+                        }`}
+                      >
+                        {checked ? (
+                          <Check size={10} className="text-white" strokeWidth={3} />
+                        ) : null}
+                      </span>
+                      <span>{value}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+
+      {availableFilterOptions.length > 0 ? (
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() =>
+              setOpenConditionMenu((prev) =>
+                prev?.kind === "field" && prev.team === team
+                  ? null
+                  : { kind: "field", team }
+              )
+            }
+            className="inline-flex h-6 items-center gap-1 rounded-md border border-emerald-500 px-2 py-[3px] text-[12px] font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
+          >
+            <Plus size={12} />
+            Add condition
+          </button>
+          {openConditionMenu?.kind === "field" && openConditionMenu.team === team ? (
+            <div className="absolute left-0 top-full z-[120] mt-1 w-[320px] rounded-xl border border-neutral-200 bg-white p-2 shadow-xl">
+              {availableFilterOptions.map((filterType) => {
+                const FilterIcon = SCOPE_FILTER_METADATA[filterType]?.icon || FileText;
+                return (
+                  <button
+                    key={filterType}
+                    type="button"
+                    onClick={() => handleAddFilter(filterType)}
+                    className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm text-neutral-900 hover:bg-neutral-50"
+                  >
+                    <FilterIcon size={16} className="text-neutral-500" />
+                    <span>{filterType}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
 function AgentScopeTeamCard({
   scope,
-  scopeWarnings = [],
   excludedTeams = [],
+  showFallbackStatus = false,
   onUpdate,
   onRemove,
 }) {
   const conditionEditorRef = useRef(null);
   const [openConditionMenu, setOpenConditionMenu] = useState(null);
-  const [pendingCondition, setPendingCondition] = useState(null);
-  const headerTeamLabel = scope.team || "Select team";
+  const teams = normalizeSelections(scope.teams ?? scope.team);
+  const teamConditions = scope.teamConditions || {};
+  const isMultiTeam = teams.length >= 2;
+
   const dispatchToTeamOptions = useMemo(() => {
     const excluded = new Set(excludedTeams);
-    return SCOPE_TEAM_OPTIONS.filter(
-      (team) => scope.team === team || !excluded.has(team)
-    );
-  }, [excludedTeams, scope.team]);
-  const pendingValueOptions = pendingCondition
-    ? SCOPE_FILTER_METADATA[pendingCondition.filterType]?.values || []
-    : [];
-  const activeFilterTypes = new Set(scope.conditions.map((condition) => condition.filterType));
-  if (pendingCondition?.filterType) {
-    activeFilterTypes.add(pendingCondition.filterType);
-  }
-  const availableFilterOptions = SCOPE_FILTER_OPTIONS.filter(
-    (filterType) => !activeFilterTypes.has(filterType)
-  );
-  const startConditionFromFilter = (filterType) => {
-    const condition = createTeamCondition({
-      filterType,
-      operator: filterType === SCOPE_STATUS_FILTER ? "Include only" : "is",
-    });
-    setPendingCondition(condition);
-    setOpenConditionMenu({ kind: "value", conditionId: condition.id });
-  };
-  const updateCondition = (conditionId, patch) => {
-    if (pendingCondition?.id === conditionId) {
-      setPendingCondition((prev) => (prev ? { ...prev, ...patch } : prev));
-      return;
-    }
+    return TEAMS.filter((team) => teams.includes(team) || !excluded.has(team));
+  }, [excludedTeams, teams]);
+
+  const handleTeamsChange = (nextTeams) => {
     onUpdate({
-      conditions: scope.conditions.map((condition) =>
-        condition.id === conditionId ? { ...condition, ...patch } : condition
-      ),
+      teams: nextTeams,
+      teamConditions: syncTeamConditionsWithTeams(nextTeams, teamConditions),
     });
   };
-  const removeCondition = (conditionId) => {
-    if (pendingCondition?.id === conditionId) {
-      setPendingCondition(null);
-      setOpenConditionMenu((prev) =>
-        prev?.kind === "value" && prev.conditionId === conditionId ? null : prev
-      );
+
+  const handleTeamConditionsChange = (nextTeamConditions) => {
+    onUpdate({ teamConditions: nextTeamConditions });
+  };
+
+  const hasBoard = Boolean(scope.view);
+  const statusOptions = getBoardStatusOptions(scope.view);
+  const fallbackStatusOptions = getBoardFallbackStatusOptions(scope.view);
+
+  const handleBoardChange = (view) => {
+    const patch = { view };
+    if (!view) {
+      patch.statuses = [];
+      patch.fallbackStatus = "";
+      onUpdate(patch);
       return;
     }
-    onUpdate({
-      conditions: scope.conditions.filter((condition) => condition.id !== conditionId),
-    });
-  };
-  const toggleConditionMiddle = (condition) => {
-    if (isStatusCondition(condition)) {
-      updateCondition(condition.id, {
-        operator: condition.operator === "Include only" ? "Exclude" : "Include only",
-      });
-      return;
+
+    const nextStatusOptions = getBoardStatusOptions(view);
+    const nextFallbackOptions = getBoardFallbackStatusOptions(view);
+    const currentStatuses = scope.statuses ?? [];
+    const validStatuses = currentStatuses.filter((status) => nextStatusOptions.includes(status));
+    if (validStatuses.length !== currentStatuses.length) {
+      patch.statuses = validStatuses;
     }
-    updateCondition(condition.id, {
-      operator: condition.operator === "is" ? "is not" : "is",
-    });
+    if (scope.fallbackStatus && !nextFallbackOptions.includes(scope.fallbackStatus)) {
+      patch.fallbackStatus = "";
+    }
+    onUpdate(patch);
   };
-  const toggleConditionValue = (condition, value) => {
-    const current = condition.valueIds || [];
-    const next = current.includes(value)
-      ? current.filter((entry) => entry !== value)
-      : [...current, value];
-    updateCondition(condition.id, { valueIds: next });
-  };
-  const conditionValueLabel = (condition) => {
-    const values = condition.valueIds || [];
-    if (values.length === 0) return "...";
-    if (values.length === 1) return values[0];
-    return `${values.length} selected`;
-  };
-  const visibleScopeWarnings = scopeWarnings.filter(() => {
-    if (effectiveHasFilterConditions(scope, pendingCondition)) return false;
-    return true;
-  });
-  const supersetWarnings = visibleScopeWarnings.filter((warning) => warning.type === "superset");
-  const duplicateWarnings = visibleScopeWarnings.filter((warning) => warning.type === "duplicate");
 
   useEffect(() => {
     if (!openConditionMenu) return undefined;
     const handleMouseDown = (event) => {
       if (!conditionEditorRef.current) return;
       if (conditionEditorRef.current.contains(event.target)) return;
-      if (
-        openConditionMenu.kind === "value" &&
-        pendingCondition &&
-        openConditionMenu.conditionId === pendingCondition.id
-      ) {
-        const pendingValues = pendingCondition.valueIds || [];
-        if (pendingValues.length > 0) {
-          onUpdate({ conditions: [...scope.conditions, pendingCondition] });
-        }
-        setPendingCondition(null);
-      }
       setOpenConditionMenu(null);
     };
     const handleEsc = (event) => {
-      if (event.key === "Escape") {
-        if (
-          openConditionMenu.kind === "value" &&
-          pendingCondition &&
-          openConditionMenu.conditionId === pendingCondition.id
-        ) {
-          const pendingValues = pendingCondition.valueIds || [];
-          if (pendingValues.length > 0) {
-            onUpdate({ conditions: [...scope.conditions, pendingCondition] });
-          }
-          setPendingCondition(null);
-        }
-        setOpenConditionMenu(null);
-      }
+      if (event.key === "Escape") setOpenConditionMenu(null);
     };
     document.addEventListener("mousedown", handleMouseDown);
     document.addEventListener("keydown", handleEsc);
@@ -1536,7 +1651,20 @@ function AgentScopeTeamCard({
       document.removeEventListener("mousedown", handleMouseDown);
       document.removeEventListener("keydown", handleEsc);
     };
-  }, [openConditionMenu, onUpdate, pendingCondition, scope.conditions]);
+  }, [openConditionMenu]);
+
+  const renderConditionsForTeam = (team) => (
+    <ScopeTeamConditionsEditor
+      scope={scope}
+      team={team}
+      teams={teams}
+      conditions={teamConditions[team] || []}
+      teamConditions={teamConditions}
+      onUpdateTeamConditions={handleTeamConditionsChange}
+      openConditionMenu={openConditionMenu}
+      setOpenConditionMenu={setOpenConditionMenu}
+    />
+  );
 
   return (
     <div className="bg-white border border-neutral-200 rounded-lg overflow-visible">
@@ -1546,10 +1674,8 @@ function AgentScopeTeamCard({
         className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left hover:bg-neutral-50/80 transition-colors"
         aria-expanded={scope.expanded}
       >
-        <span
-          className={`min-w-0 truncate text-sm ${scope.team ? "font-medium text-neutral-900" : "text-neutral-400"}`}
-        >
-          {headerTeamLabel}
+        <span className="min-w-0 truncate text-sm">
+          <ScopeCardHeaderLabel scope={scope} />
         </span>
         <span className="flex shrink-0 items-center gap-[4px]">
           <button
@@ -1559,7 +1685,7 @@ function AgentScopeTeamCard({
               onRemove();
             }}
             className="p-1.5 rounded-md text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-            aria-label="Remove team"
+            aria-label="Remove scope section"
           >
             <Trash2 size={15} />
           </button>
@@ -1575,222 +1701,89 @@ function AgentScopeTeamCard({
         <div className="border-t border-neutral-100">
           <Row
             label="Dispatch to"
-            subcopy="Select the Inbox team that threads will be dispatched to."
+            subcopy="Select the Inbox Team threads will be dispatched to."
           >
-            <Select
-              value={scope.team}
+            <MultiSelect
+              values={teams}
               options={dispatchToTeamOptions}
-              onChange={(team) => onUpdate({ team })}
-              placeholder="Select team"
-              dropdownClassName="w-[220px]"
+              onChange={handleTeamsChange}
+              placeholder="Select Inbox team"
+              summaryLabel={
+                teams.length === 0
+                  ? undefined
+                  : teams.length === 1
+                    ? teams[0]
+                    : `${teams.length} teams selected`
+              }
+              dropdownClassName="w-[280px]"
             />
           </Row>
-          <div className="border-b border-neutral-100 px-5 py-4">
+          <div className={`px-5 py-4 ${hasBoard ? "border-b border-neutral-100" : ""}`}>
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-neutral-900">Dispatch from</div>
                 <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                  Select the board to dispatch threads from.
+                  Select the board to dispatch threads from. Add conditions to narrow the scope.
                 </p>
               </div>
               <Select
                 value={scope.view}
                 options={SCOPE_BOARD_OPTIONS}
-                onChange={(view) => onUpdate({ view })}
+                onChange={handleBoardChange}
                 placeholder="Select board"
                 dropdownClassName="w-[220px]"
               />
             </div>
-            <div className="mt-3 min-w-0">
-            <div
-              ref={conditionEditorRef}
-              className="relative flex flex-wrap items-center gap-2"
-            >
-              {scope.conditions.map((condition) => {
-                const filterMeta = SCOPE_FILTER_METADATA[condition.filterType];
-                const FilterIcon = filterMeta?.icon || FileText;
-                const valueOptions = filterMeta?.values || [];
-                const statusCondition = isStatusCondition(condition);
-                const valueMenuOpen =
-                  openConditionMenu?.kind === "value" &&
-                  openConditionMenu.conditionId === condition.id;
-                return (
-                  <div
-                    key={condition.id}
-                    className="relative inline-flex h-6 items-center rounded-md border border-neutral-300 bg-white text-[12px] text-neutral-800"
-                  >
-                    <span className="inline-flex items-center gap-1 border-r border-neutral-300 px-2 py-[3px]">
-                      <FilterIcon size={12} className="text-neutral-500" />
-                      <span>{condition.filterType}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => toggleConditionMiddle(condition)}
-                      className={`border-r border-neutral-300 px-2 py-[3px] text-neutral-700 transition-colors hover:bg-neutral-50 ${
-                        statusCondition ? "whitespace-nowrap" : ""
-                      }`}
-                    >
-                      {condition.operator}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setOpenConditionMenu((prev) =>
-                          prev?.kind === "value" && prev.conditionId === condition.id
-                            ? null
-                            : { kind: "value", conditionId: condition.id }
-                        )
-                      }
-                      className="max-w-[150px] truncate border-r border-neutral-300 px-2 py-[3px] text-left text-neutral-900 transition-colors hover:bg-neutral-50"
-                    >
-                      {conditionValueLabel(condition)}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeCondition(condition.id)}
-                      className="px-1.5 text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-700"
-                      aria-label="Remove condition"
-                    >
-                      <X size={12} />
-                    </button>
-
-                    {valueMenuOpen ? (
-                      <div className="absolute left-0 top-full z-[120] mt-1 w-[320px] max-h-[260px] overflow-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
-                        {valueOptions.map((value) => {
-                          const checked = (condition.valueIds || []).includes(value);
-                          return (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() => toggleConditionValue(condition, value)}
-                              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] text-neutral-900 hover:bg-neutral-50"
-                            >
-                              <span
-                                className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
-                                  checked
-                                    ? "border-emerald-500 bg-emerald-500"
-                                    : "border-neutral-300 bg-white"
-                                }`}
-                              >
-                                {checked ? (
-                                  <Check size={10} className="text-white" strokeWidth={3} />
-                                ) : null}
-                              </span>
-                              <span>{value}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-
-              <div className="relative">
-                {availableFilterOptions.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenConditionMenu((prev) =>
-                        prev?.kind === "field" ? null : { kind: "field" }
-                      )
-                    }
-                    className="inline-flex h-6 items-center gap-1 rounded-md border border-emerald-500 px-2 py-[3px] text-[12px] font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
-                  >
-                    <Plus size={12} />
-                    Add condition
-                  </button>
-                ) : null}
-                {openConditionMenu?.kind === "field" && availableFilterOptions.length > 0 ? (
-                  <div className="absolute left-0 top-full z-[120] mt-1 w-[320px] rounded-xl border border-neutral-200 bg-white p-2 shadow-xl">
-                    {availableFilterOptions.map((filterType) => {
-                      const FilterIcon = SCOPE_FILTER_METADATA[filterType]?.icon || FileText;
-                      return (
-                        <button
-                          key={filterType}
-                          type="button"
-                          onClick={() => {
-                            startConditionFromFilter(filterType);
-                          }}
-                          className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm text-neutral-900 hover:bg-neutral-50"
-                        >
-                          <FilterIcon size={16} className="text-neutral-500" />
-                          <span>{filterType}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-                {openConditionMenu?.kind === "value" &&
-                pendingCondition &&
-                openConditionMenu.conditionId === pendingCondition.id ? (
-                  <div className="absolute left-0 top-full z-[120] mt-1 w-[320px] max-h-[260px] overflow-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
-                    {pendingValueOptions.map((value) => {
-                      const checked = (pendingCondition.valueIds || []).includes(value);
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => toggleConditionValue(pendingCondition, value)}
-                          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] text-neutral-900 hover:bg-neutral-50"
-                        >
-                          <span
-                            className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
-                              checked
-                                ? "border-emerald-500 bg-emerald-500"
-                                : "border-neutral-300 bg-white"
-                            }`}
-                          >
-                            {checked ? (
-                              <Check size={10} className="text-white" strokeWidth={3} />
-                            ) : null}
-                          </span>
-                          <span>{value}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            {supersetWarnings.length > 0 ? (
-              <div className="mt-2 space-y-1.5">
-                {supersetWarnings.map((warning, index) => (
-                  <ScopeWarningNote
-                    key={`superset-${warning.teamName}-${index}`}
-                    message={formatScopeWarningMessage(warning)}
-                  />
-                ))}
-              </div>
-            ) : null}
-            {duplicateWarnings.length > 0 ? (
-              <div className="mt-2 space-y-1.5">
-                {duplicateWarnings.map((warning, index) => (
-                  <ScopeWarningNote
-                    key={`duplicate-${warning.teamName}-${index}`}
-                    message={formatScopeWarningMessage(warning)}
-                  />
-                ))}
-              </div>
-            ) : null}
+            <div ref={conditionEditorRef} className="mt-3 min-w-0">
+              {teams.length === 0 ? null : isMultiTeam ? (
+                <div className="space-y-3">
+                  {teams.map((team) => (
+                    <div key={team} className="space-y-2">
+                      <div className="text-sm font-medium text-neutral-900">{team}:</div>
+                      {renderConditionsForTeam(team)}
+                    </div>
+                  ))}
+                  <MutualExclusivityNote />
+                </div>
+              ) : (
+                renderConditionsForTeam(teams[0])
+              )}
             </div>
           </div>
-          <Row
-            label="Skip tickets assigned by Flows"
-            subcopy="When enabled, the agent will skip tickets that are already handled by a Flow with an assign action."
-            noBorder
-            align="center"
-          >
-            <div className="inline-flex shrink-0 items-center">
-              <Switch
-                size="sm"
-                checked={scope.skipFlowAssignedTickets}
-                onCheckedChange={(skipFlowAssignedTickets) =>
-                  onUpdate({ skipFlowAssignedTickets })
-                }
-              />
-            </div>
-          </Row>
+          {hasBoard ? (
+            <>
+              <Row
+                label="Status"
+                subcopy="Select status(es) the agent should focus on"
+                noBorder={!showFallbackStatus}
+              >
+                <MultiSelect
+                  values={scope.statuses ?? []}
+                  options={statusOptions}
+                  onChange={(statuses) => onUpdate({ statuses })}
+                  placeholder="Select status"
+                  searchable
+                  searchPlaceholder="Search statuses..."
+                  dropdownClassName="w-[280px]"
+                />
+              </Row>
+              {showFallbackStatus ? (
+                <Row
+                  label="Fallback status"
+                  subcopy="Status set when no one is available."
+                  noBorder
+                >
+                  <Select
+                    value={scope.fallbackStatus ?? ""}
+                    options={fallbackStatusOptions}
+                    onChange={(fallbackStatus) => onUpdate({ fallbackStatus })}
+                    placeholder="Select status"
+                    dropdownClassName="w-[220px]"
+                  />
+                </Row>
+              ) : null}
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -2748,18 +2741,21 @@ function ConfigPage({
       return initialScopeRecords.map((scope, index) =>
         createTeamScope(index + 1, {
           ...scope,
-          team: scope.team ?? initialTeams[index] ?? "",
+          teams: normalizeSelections(
+            scope.teams ?? scope.team ?? (initialTeams[index] ? [initialTeams[index]] : [])
+          ),
           view: scope.view ?? scope.board ?? initialViews[index] ?? "",
+          fallbackStatus: scope.fallbackStatus ?? initialAgent?.fallbackStatus,
         })
       );
     }
     if (initialTeams.length > 0) {
       return initialTeams.map((team, index) =>
         createTeamScope(index + 1, {
-          team,
+          teams: [team],
           view: initialViews[index] ?? initialViews[0] ?? "",
-          statusMode: "Include only",
           statuses: initialAgent?.statuses ?? [],
+          fallbackStatus: initialAgent?.fallbackStatus,
           skipFlowAssignedTickets: initialAgent?.skipFlowAssignedTickets ?? false,
         })
       );
@@ -2795,10 +2791,6 @@ function ConfigPage({
     }
     return false;
   });
-  const [fallbackStatus, setFallbackStatus] = useState(
-    initialAgent?.fallbackStatus ?? "Escalation"
-  );
-
   const [lastPublishedAt, setLastPublishedAt] = useState(() => {
     const raw = initialAgent?.lastPublishedAt;
     if (!raw) return null;
@@ -2970,23 +2962,20 @@ function ConfigPage({
   }
 
   const teams = useMemo(
-    () => teamScopes.map((scope) => scope.team).filter(Boolean),
+    () =>
+      teamScopes.flatMap((scope) => normalizeSelections(scope.teams ?? scope.team)),
     [teamScopes]
   );
   const scopeViews = useMemo(
     () => teamScopes.map((scope) => scope.view).filter(Boolean),
     [teamScopes]
   );
-  const scopeWarningsBySectionId = useMemo(
-    () => computeScopeWarningsBySectionId(teamScopes),
-    [teamScopes]
-  );
   const excludedTeamsByScopeId = useMemo(() => {
     const excludedByScopeId = {};
     teamScopes.forEach((scope) => {
       excludedByScopeId[scope.id] = teamScopes
-        .filter((otherScope) => otherScope.id !== scope.id && otherScope.team)
-        .map((otherScope) => otherScope.team);
+        .filter((otherScope) => otherScope.id !== scope.id)
+        .flatMap((otherScope) => normalizeSelections(otherScope.teams ?? otherScope.team));
     });
     return excludedByScopeId;
   }, [teamScopes]);
@@ -3004,26 +2993,14 @@ function ConfigPage({
   );
   const rankingWeightsValid =
     isRoute || dispatchMode !== "Self-serve" || rankingWeightTotal === 100;
-  const canSave = !hasErrors && !missingRequired && rankingWeightsValid;
+  const multiTeamScopesValid = teamScopes.every(isMultiTeamScopeValid);
+  const canSave =
+    !hasErrors && !missingRequired && rankingWeightsValid && multiTeamScopesValid;
 
   const updateTeamScope = (id, patch) => {
     setTeamScopes((prev) =>
-      prev.map((scope) => {
-        if (scope.id !== id) return scope;
-        const next = { ...scope, ...patch };
-        if (Object.prototype.hasOwnProperty.call(patch, "conditions")) {
-          return syncScopeStatusFields(next);
-        }
-        return next;
-      })
+      prev.map((scope) => (scope.id === id ? { ...scope, ...patch } : scope))
     );
-  };
-
-  const addTeamScope = () => {
-    setTeamScopes((prev) => {
-      const id = Date.now();
-      return [...prev, createTeamScope(id)];
-    });
   };
 
   const removeTeamScope = (id) => {
@@ -3055,7 +3032,10 @@ function ConfigPage({
       excludeTechs: [],
       excludeTechsEnabled: false,
       skipFlowAssignedTickets: primaryScope?.skipFlowAssignedTickets ?? false,
-      fallbackStatus: isRoute ? "No change" : fallbackStatus,
+      fallbackStatus:
+        isRoute || dispatchMode !== "Auto-assign"
+          ? "No change"
+          : primaryScope?.fallbackStatus ?? "Escalation",
       destinations: isRoute ? rules.map((r) => r.board).filter(Boolean) : [],
       routeRules: isRoute ? rules : undefined,
       guidance: isRoute ? undefined : customGuidance,
@@ -3066,8 +3046,8 @@ function ConfigPage({
           ? assignModeInstructions
           : agentInstructions,
       rankingSignals: isRoute ? undefined : rankingSignals,
-      statuses: isRoute ? statuses : getScopeStatus(primaryScope ?? {}).statuses,
-      statusMode: isRoute ? statusMode : getScopeStatus(primaryScope ?? {}).statusMode,
+      statuses: isRoute ? statuses : primaryScope?.statuses ?? [],
+      statusMode: isRoute ? statusMode : "Include only",
       active,
       lastPublishedAt: publishedAt.toISOString(),
     });
@@ -3297,21 +3277,33 @@ function ConfigPage({
                 <AgentScopeTeamCard
                   key={scope.id}
                   scope={scope}
-                  scopeWarnings={scopeWarningsBySectionId[scope.id] ?? []}
                   excludedTeams={excludedTeamsByScopeId[scope.id] ?? []}
+                  showFallbackStatus={dispatchMode === "Auto-assign"}
                   onUpdate={(patch) => updateTeamScope(scope.id, patch)}
                   onRemove={() => removeTeamScope(scope.id)}
                 />
               ))}
             </div>
-            <button
-              type="button"
-              onClick={addTeamScope}
-              className="mt-3 flex items-center gap-1.5 rounded-md border border-emerald-500 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:bg-emerald-50/60 transition-colors"
-            >
-              <Plus size={14} />
-              Add team
-            </button>
+            {teamScopes[0] ? (
+              <div className="mt-3 rounded-lg border border-neutral-200 bg-white">
+                <Row
+                  label="Skip tickets assigned by Flows"
+                  subcopy="When enabled, the agent will skip tickets that are already handled by a Flow with an assign action."
+                  noBorder
+                  align="center"
+                >
+                  <div className="inline-flex shrink-0 items-center">
+                    <Switch
+                      size="sm"
+                      checked={teamScopes[0].skipFlowAssignedTickets}
+                      onCheckedChange={(skipFlowAssignedTickets) =>
+                        updateTeamScope(teamScopes[0].id, { skipFlowAssignedTickets })
+                      }
+                    />
+                  </div>
+                </Row>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -3525,6 +3517,7 @@ function ConfigPage({
                     : "The agent will not check calendar availability when assigning techs."
                 }
                 align="center"
+                noBorder
               >
                 <div className="inline-flex shrink-0 items-center">
                   <Switch
@@ -3533,17 +3526,6 @@ function ConfigPage({
                     onCheckedChange={setCalendarAvailabilityEnabled}
                   />
                 </div>
-              </Row>
-              <Row
-                label="Fallback status"
-                subcopy="Status set when no one is available."
-                noBorder
-              >
-                <Select
-                  value={fallbackStatus}
-                  options={["No change", "Escalation", "On Hold", "Unassigned"]}
-                  onChange={setFallbackStatus}
-                />
               </Row>
             </Section>
             {/* Guidance — hidden for prototype; set to true to show */}

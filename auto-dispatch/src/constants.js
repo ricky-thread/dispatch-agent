@@ -33,6 +33,24 @@ export const TEAMS = [
   "Procurement",
 ];
 
+/** Status options for dispatch agent scope cards (global per scope). */
+export const DISPATCH_STATUS_OPTIONS = [
+  "Needs dispatch",
+  "New",
+  "In Progress",
+  "Waiting Client Response",
+  "On Hold",
+  "Scheduled",
+];
+
+/** Status options available per dispatch board (scope cards). */
+export const BOARD_DISPATCH_STATUSES = {
+  "Help Desk": DISPATCH_STATUS_OPTIONS,
+  Network: ["New", "In Progress", "On Hold", "Escalation", "Resolved"],
+  Projects: ["New", "Planning", "In Progress", "On Hold", "Completed"],
+  Voice: ["New", "Ringing", "In Progress", "On Hold", "Resolved"],
+};
+
 /** Emoji shown beside inbox team labels (agent scope, test agent). */
 export const TEAM_META = {
   "Team Alpha": { emoji: "🛡️" },

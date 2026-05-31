@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { TeamLabel } from "../TeamIcon";
 import ThreadCard from "../ThreadCard";
+import RecommendationCard from "./RecommendationCard";
 import {
   MAX_TEST_THREADS,
   computeTestAgentRanking,
@@ -17,8 +18,10 @@ import {
   groupThreadIdsByTeam,
   sortThreadsByRanking,
 } from "./testAgentThreads";
+import { computeTechnicianRecommendations } from "./testAgentTechnicians";
 
 const FEEDBACK_SUBMIT_DELAY_MS = 900;
+const SHOW_FEEDBACK_BANNER = false;
 
 function TestAgentFeedbackBanner({
   thanks,
@@ -146,7 +149,6 @@ function ThreadCardList({
   hasRunTest,
   rankingById,
   onRemoveThread,
-  rankingDisplayMode = "points",
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
@@ -158,7 +160,31 @@ function ThreadCardList({
             key={thread.id}
             thread={thread}
             ranking={ranking}
-            rankingDisplayMode={rankingDisplayMode}
+            onRemove={onRemoveThread}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function RecommendationCardList({
+  recommendations,
+  fallbackStatus,
+  onRemoveThread,
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+      {recommendations.map(({ threadId, technician }) => {
+        const thread = getTestAgentThread(threadId);
+        if (!thread) return null;
+
+        return (
+          <RecommendationCard
+            key={threadId}
+            thread={thread}
+            recommendation={{ technician }}
+            fallbackStatus={fallbackStatus}
             onRemove={onRemoveThread}
           />
         );
@@ -172,6 +198,9 @@ export default function TestAgentPanel({
   agentInstructions = "",
   rankingSignals = [],
   outputMode = "points",
+  maxActiveThreads = "No limit",
+  calendarAvailabilityEnabled = false,
+  fallbackStatus = "Escalation",
 }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -197,22 +226,38 @@ export default function TestAgentPanel({
   };
 
   const atMax = selectedIds.length >= MAX_TEST_THREADS;
-  const minThreadsForRunTest = outputMode === "llm" ? 2 : 1;
+  const isRecommendationMode = outputMode === "recommendation";
+  const minThreadsForRunTest = 1;
   const canRunTest = selectedIds.length >= minThreadsForRunTest;
 
   const groupByTeam = configuredTeams.length >= 2;
+  const recommendationOptions = useMemo(
+    () => ({
+      maxActiveThreads,
+      calendarAvailabilityEnabled,
+      rankingSignals,
+    }),
+    [calendarAvailabilityEnabled, maxActiveThreads, rankingSignals]
+  );
   const rankingById = useMemo(
     () =>
-      hasRunTest
+      hasRunTest && !isRecommendationMode
         ? computeTestAgentRanking(selectedIds, rankingSignals)
         : {},
-    [hasRunTest, rankingSignals, selectedIds]
+    [hasRunTest, isRecommendationMode, rankingSignals, selectedIds]
+  );
+  const recommendations = useMemo(
+    () =>
+      hasRunTest && isRecommendationMode
+        ? computeTechnicianRecommendations(selectedIds, recommendationOptions)
+        : [],
+    [hasRunTest, isRecommendationMode, recommendationOptions, selectedIds]
   );
 
   const displayedIds = useMemo(() => {
-    if (!hasRunTest || groupByTeam) return selectedIds;
+    if (!hasRunTest || groupByTeam || isRecommendationMode) return selectedIds;
     return sortThreadsByRanking(selectedIds, rankingSignals);
-  }, [selectedIds, hasRunTest, groupByTeam, rankingSignals]);
+  }, [selectedIds, hasRunTest, groupByTeam, isRecommendationMode, rankingSignals]);
 
   const displayedThreads = useMemo(
     () => displayedIds.map((id) => getTestAgentThread(id)).filter(Boolean),
@@ -222,15 +267,34 @@ export default function TestAgentPanel({
   const teamSections = useMemo(() => {
     if (!groupByTeam) return null;
     return groupThreadIdsByTeam(selectedIds, configuredTeams, {
-      sortByRanking: hasRunTest,
+      sortByRanking: hasRunTest && !isRecommendationMode,
       rankingSignals,
     }).map((section) => ({
       team: section.team,
+      threadIds: section.threadIds,
       threads: section.threadIds
         .map((id) => getTestAgentThread(id))
         .filter(Boolean),
     }));
-  }, [configuredTeams, groupByTeam, hasRunTest, rankingSignals, selectedIds]);
+  }, [
+    configuredTeams,
+    groupByTeam,
+    hasRunTest,
+    isRecommendationMode,
+    rankingSignals,
+    selectedIds,
+  ]);
+
+  const teamRecommendationSections = useMemo(() => {
+    if (!hasRunTest || !isRecommendationMode || !teamSections) return null;
+    return teamSections.map((section) => ({
+      team: section.team,
+      recommendations: computeTechnicianRecommendations(
+        section.threadIds,
+        recommendationOptions
+      ),
+    }));
+  }, [hasRunTest, isRecommendationMode, recommendationOptions, teamSections]);
 
   const teamGroupedThreadCount = useMemo(
     () =>
@@ -312,7 +376,12 @@ export default function TestAgentPanel({
     setFeedbackModalOpen(false);
     setFeedbackSubmitting(false);
     setFeedbackDismissed(false);
-  }, [agentInstructions, outputMode]);
+  }, [
+    agentInstructions,
+    calendarAvailabilityEnabled,
+    maxActiveThreads,
+    outputMode,
+  ]);
 
   const handleSelectThread = (threadId) => {
     if (selectedIds.includes(threadId)) return;
@@ -371,15 +440,13 @@ export default function TestAgentPanel({
     }, FEEDBACK_SUBMIT_DELAY_MS);
   };
 
-  const rankingDisplayMode = outputMode === "llm" ? "llm" : "points";
-  const isAutoAssignMode = rankingDisplayMode === "llm";
-
-  const rankedResultsHeader = isAutoAssignMode
-    ? "Dispatch Agent's ranking."
+  const rankedResultsHeader = isRecommendationMode
+    ? "Dispatcher's recommendation"
     : "Weight-based ranking.";
 
   const showFeedbackBanner =
-    isAutoAssignMode &&
+    SHOW_FEEDBACK_BANNER &&
+    isRecommendationMode &&
     hasRunTest &&
     displayedThreads.length > 0 &&
     !feedbackDismissed;
@@ -558,7 +625,30 @@ export default function TestAgentPanel({
         />
 
         {displayedThreads.length > 0 ? (
-          showTeamGroupedThreads ? (
+          hasRunTest && isRecommendationMode ? (
+            showTeamGroupedThreads && teamRecommendationSections ? (
+              <div className="space-y-5">
+                {teamRecommendationSections.map((section) => (
+                  <section key={section.team}>
+                    <div className="mb-2">
+                      <TeamLabel team={section.team} />
+                    </div>
+                    <RecommendationCardList
+                      recommendations={section.recommendations}
+                      fallbackStatus={fallbackStatus}
+                      onRemoveThread={handleRemoveThread}
+                    />
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <RecommendationCardList
+                recommendations={recommendations}
+                fallbackStatus={fallbackStatus}
+                onRemoveThread={handleRemoveThread}
+              />
+            )
+          ) : showTeamGroupedThreads ? (
             <div className="space-y-5">
               {teamSections.map((section) => (
                 <section key={section.team}>
@@ -569,7 +659,6 @@ export default function TestAgentPanel({
                     threads={section.threads}
                     hasRunTest={hasRunTest}
                     rankingById={rankingById}
-                    rankingDisplayMode={rankingDisplayMode}
                     onRemoveThread={handleRemoveThread}
                   />
                 </section>
@@ -580,7 +669,6 @@ export default function TestAgentPanel({
               threads={displayedThreads}
               hasRunTest={hasRunTest}
               rankingById={rankingById}
-              rankingDisplayMode={rankingDisplayMode}
               onRemoveThread={handleRemoveThread}
             />
           )
@@ -592,9 +680,9 @@ export default function TestAgentPanel({
               className="mb-4 text-neutral-300"
             />
             <p className="max-w-[260px] text-sm leading-snug text-neutral-500">
-              {minThreadsForRunTest === 1
-                ? "Select one or more threads to see how they would be ranked."
-                : "Select two or more threads to see how the agent would rank them."}
+              {isRecommendationMode
+                ? "Select one or more threads to see who the agent would assign."
+                : "Select one or more threads to see how they would be ranked."}
             </p>
           </div>
         )}

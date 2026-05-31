@@ -41,14 +41,16 @@ export const DISPATCH_STATUS_OPTIONS = [
   "Waiting Client Response",
   "On Hold",
   "Scheduled",
+  "Escalate",
+  "Triage",
 ];
 
 /** Status options available per dispatch board (scope cards). */
 export const BOARD_DISPATCH_STATUSES = {
   "Help Desk": DISPATCH_STATUS_OPTIONS,
-  Network: ["New", "In Progress", "On Hold", "Escalation", "Resolved"],
-  Projects: ["New", "Planning", "In Progress", "On Hold", "Completed"],
-  Voice: ["New", "Ringing", "In Progress", "On Hold", "Resolved"],
+  Network: ["New", "In Progress", "On Hold", "Escalation", "Escalate", "Triage", "Resolved"],
+  Projects: ["New", "Planning", "In Progress", "On Hold", "Escalate", "Triage", "Completed"],
+  Voice: ["New", "Ringing", "In Progress", "On Hold", "Escalate", "Triage", "Resolved"],
 };
 
 /** Emoji shown beside inbox team labels (agent scope, test agent). */
@@ -109,6 +111,7 @@ export const STATUSES = [
   "CLOSED",
   "CLOSED (RESOLVED)",
   "COMPLETED",
+  "ESCALATE",
   "ESCALATE (NEEDS IMMEDIATE ATTENTION)",
   "IN PROGRESS",
   "IN PROGRESS (PLAN OF ACTION)",

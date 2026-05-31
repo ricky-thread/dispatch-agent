@@ -2670,8 +2670,8 @@ function ConfigPage({
   const [avatarId, setAvatarId] = useState(initialAgent?.avatarId ?? "avatar-1");
   const [dispatchMode, setDispatchMode] = useState(initialAgent?.dispatchMode ?? "Auto-assign");
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
-  const TEST_PANEL_MIN_WIDTH = 300;
-  const TEST_PANEL_MAX_WIDTH = 600;
+  const TEST_PANEL_MIN_WIDTH = 320;
+  const TEST_PANEL_MAX_WIDTH = 720;
   const [testPanelOpen, setTestPanelOpen] = useState(false);
   const [testPanelWidth, setTestPanelWidth] = useState(400);
   const [isResizingTestPanel, setIsResizingTestPanel] = useState(false);
@@ -3276,7 +3276,7 @@ function ConfigPage({
               <div className="mt-3 rounded-lg border border-neutral-200 bg-white">
                 <Row
                   label="Skip tickets assigned by Flows"
-                  subcopy="When enabled, the agent will skip tickets that are already handled by a Flow with an assign action."
+                  subcopy="When enabled, auto dispatch will skip tickets that are already being assigned by a Flow."
                   noBorder
                   align="center"
                 >
@@ -3628,42 +3628,54 @@ function ConfigPage({
           </div>
         </div>
 
+        {testPanelOpen ? (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize test panel"
+            aria-valuemin={TEST_PANEL_MIN_WIDTH}
+            aria-valuemax={TEST_PANEL_MAX_WIDTH}
+            aria-valuenow={testPanelWidth}
+            onMouseDown={handleTestPanelResizeStart}
+            className={`group relative z-20 flex w-2 shrink-0 cursor-col-resize touch-none items-stretch ${
+              isResizingTestPanel ? "bg-emerald-500/10" : ""
+            }`}
+          >
+            <div
+              className={`absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors ${
+                isResizingTestPanel
+                  ? "bg-emerald-500"
+                  : "bg-neutral-200 group-hover:bg-emerald-500/50"
+              }`}
+            />
+          </div>
+        ) : null}
+
         <aside
           aria-hidden={!testPanelOpen}
           style={{ width: testPanelOpen ? testPanelWidth : 0 }}
-          className={`relative flex h-full shrink-0 flex-col overflow-hidden border-l border-neutral-200 bg-white ${
-            testPanelOpen ? "" : "border-transparent"
-          } ${
+          className={`relative flex h-full shrink-0 flex-col overflow-hidden bg-white ${
             testPanelOpen && !isResizingTestPanel
               ? "transition-[width] duration-300 ease-in-out"
               : ""
           }`}
         >
           {testPanelOpen ? (
-            <>
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize test panel"
-                aria-valuemin={TEST_PANEL_MIN_WIDTH}
-                aria-valuemax={TEST_PANEL_MAX_WIDTH}
-                aria-valuenow={testPanelWidth}
-                onMouseDown={handleTestPanelResizeStart}
-                className="group absolute inset-y-0 left-0 z-10 w-2 cursor-col-resize touch-none"
-              >
-                <div className="absolute inset-y-0 left-0 w-px bg-transparent transition-colors group-hover:bg-emerald-500/40 group-active:bg-emerald-500/60" />
-              </div>
-              <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                <TestAgentPanel
-                  configuredTeams={teams}
-                  agentInstructions={
-                    dispatchMode === "Auto-assign" ? assignModeInstructions : agentInstructions
-                  }
-                  rankingSignals={rankingSignals}
-                  outputMode={dispatchMode === "Auto-assign" ? "llm" : "points"}
-                />
-              </div>
-            </>
+            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+              <TestAgentPanel
+                configuredTeams={teams}
+                agentInstructions={
+                  dispatchMode === "Auto-assign" ? assignModeInstructions : agentInstructions
+                }
+                rankingSignals={rankingSignals}
+                outputMode={
+                  dispatchMode === "Auto-assign" ? "recommendation" : "points"
+                }
+                maxActiveThreads={maxActiveThreads}
+                calendarAvailabilityEnabled={calendarAvailabilityEnabled}
+                fallbackStatus={teamScopes[0]?.fallbackStatus || "Escalation"}
+              />
+            </div>
           ) : null}
         </aside>
       </div>

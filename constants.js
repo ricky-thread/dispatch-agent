@@ -24,6 +24,8 @@ export const STATUSES = [
   "Needs scheduling",
   "Open",
   "Waiting on client",
+  "Escalate",
+  "Triage",
   "Resolved",
 ];
 

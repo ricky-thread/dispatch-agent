@@ -41,8 +41,13 @@ function SlaStatusIcon({ stroke }) {
   );
 }
 
-function PersonAvatar({ initials, colorClass, size = "md" }) {
-  const sizeClass = size === "sm" ? "h-4 w-4 text-[8px]" : "h-5 w-5 text-[9px]";
+export function PersonAvatar({ initials, colorClass, size = "md" }) {
+  const sizeClass =
+    size === "sm"
+      ? "h-4 w-4 text-[8px]"
+      : size === "lg"
+        ? "h-7 w-7 text-[10px]"
+        : "h-5 w-5 text-[9px]";
   return (
     <span
       className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold ${sizeClass} ${colorClass}`}
@@ -52,35 +57,14 @@ function PersonAvatar({ initials, colorClass, size = "md" }) {
   );
 }
 
-export default function ThreadCard({ thread, onRemove, ranking, rankingDisplayMode = "points" }) {
+export function ThreadCardBody({ thread, onRemove }) {
   const slaStyle = SLA_STYLES[thread.slaLabel] ?? SLA_STYLES["On time"];
   const sentimentConfig =
     SENTIMENT_ICONS[thread.sentiment] ?? SENTIMENT_ICONS.neutral;
   const SentimentIcon = sentimentConfig.Icon;
 
   return (
-    <div className="group relative border-b border-neutral-200 bg-white last:border-b-0 hover:bg-neutral-50/50">
-      {ranking ? (
-        <div className="border-b border-teal-100 bg-teal-50 px-3.5 py-2 text-[13px] leading-snug text-teal-900">
-          <span className="font-semibold">{ranking.rank}. </span>
-          {rankingDisplayMode === "points" ? (
-            <>
-              <span className="text-teal-800/65">
-                {ranking.score}/{ranking.scoreMax ?? 100}
-              </span>
-              {ranking.reasoning ? ` — ${ranking.reasoning}.` : ""}
-            </>
-          ) : (
-            <span className="text-teal-800/90">
-              {ranking.reasoning
-                ? `Reasoning: ${ranking.reasoning}.`
-                : "Reasoning: Ranked using current assignment guidance."}
-            </span>
-          )}
-        </div>
-      ) : null}
-
-      <div className="relative px-3.5 py-3">
+    <div className="relative px-3.5 py-3">
       {onRemove ? (
         <button
           type="button"
@@ -157,7 +141,24 @@ export default function ThreadCard({ thread, onRemove, ranking, rankingDisplayMo
           {thread.slaLabel}
         </span>
       </div>
-      </div>
+    </div>
+  );
+}
+
+export default function ThreadCard({ thread, onRemove, ranking }) {
+  return (
+    <div className="group relative border-b border-neutral-200 bg-white last:border-b-0 hover:bg-neutral-50/50">
+      {ranking ? (
+        <div className="border-b border-teal-100 bg-teal-50 px-3.5 py-2 text-[13px] leading-snug text-teal-900">
+          <span className="font-semibold">{ranking.rank}. </span>
+          <span className="text-teal-800/65">
+            {ranking.score}/{ranking.scoreMax ?? 100}
+          </span>
+          {ranking.reasoning ? ` — ${ranking.reasoning}.` : ""}
+        </div>
+      ) : null}
+
+      <ThreadCardBody thread={thread} onRemove={onRemove} />
     </div>
   );
 }

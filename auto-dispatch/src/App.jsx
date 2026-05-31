@@ -3629,38 +3629,25 @@ function ConfigPage({
         </div>
 
         {testPanelOpen ? (
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize test panel"
-            aria-valuemin={TEST_PANEL_MIN_WIDTH}
-            aria-valuemax={TEST_PANEL_MAX_WIDTH}
-            aria-valuenow={testPanelWidth}
-            onMouseDown={handleTestPanelResizeStart}
-            className={`group relative z-20 flex w-2 shrink-0 cursor-col-resize touch-none items-stretch ${
-              isResizingTestPanel ? "bg-emerald-500/10" : ""
+          <aside
+            aria-hidden={false}
+            style={{ width: testPanelWidth }}
+            className={`relative flex h-full shrink-0 flex-col overflow-hidden border-l border-neutral-200 bg-white ${
+              !isResizingTestPanel ? "transition-[width] duration-300 ease-in-out" : ""
             }`}
           >
             <div
-              className={`absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors ${
-                isResizingTestPanel
-                  ? "bg-emerald-500"
-                  : "bg-neutral-200 group-hover:bg-emerald-500/50"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize test panel"
+              aria-valuemin={TEST_PANEL_MIN_WIDTH}
+              aria-valuemax={TEST_PANEL_MAX_WIDTH}
+              aria-valuenow={testPanelWidth}
+              onMouseDown={handleTestPanelResizeStart}
+              className={`absolute inset-y-0 -left-2 z-20 w-4 cursor-col-resize touch-none ${
+                isResizingTestPanel ? "bg-emerald-500/10" : ""
               }`}
             />
-          </div>
-        ) : null}
-
-        <aside
-          aria-hidden={!testPanelOpen}
-          style={{ width: testPanelOpen ? testPanelWidth : 0 }}
-          className={`relative flex h-full shrink-0 flex-col overflow-hidden bg-white ${
-            testPanelOpen && !isResizingTestPanel
-              ? "transition-[width] duration-300 ease-in-out"
-              : ""
-          }`}
-        >
-          {testPanelOpen ? (
             <div className="flex h-full min-h-0 flex-col overflow-hidden">
               <TestAgentPanel
                 configuredTeams={teams}
@@ -3676,8 +3663,8 @@ function ConfigPage({
                 fallbackStatus={teamScopes[0]?.fallbackStatus || "Escalation"}
               />
             </div>
-          ) : null}
-        </aside>
+          </aside>
+        ) : null}
       </div>
     </main>
   );

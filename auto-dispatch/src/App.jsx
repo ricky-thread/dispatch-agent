@@ -1315,6 +1315,35 @@ function getDisabledValuesForTeamField(scope, team, filterType) {
   return disabled;
 }
 
+/** Map of filterType → values selected on more than one team in the same scope. */
+function getOverlappingValuesByFilterType(scope) {
+  const overlaps = new Map();
+  const teams = normalizeSelections(scope.teams ?? scope.team);
+  if (teams.length < 2) return overlaps;
+
+  const filterTypes = getScopeFilterTypes(scope);
+  for (const filterType of filterTypes) {
+    const seenValues = new Set();
+    const filterOverlaps = new Set();
+    for (const team of teams) {
+      const condition = (scope.teamConditions?.[team] || []).find(
+        (entry) => entry.filterType === filterType
+      );
+      if (!condition) continue;
+      for (const value of condition.valueIds || []) {
+        if (seenValues.has(value)) filterOverlaps.add(value);
+        seenValues.add(value);
+      }
+    }
+    if (filterOverlaps.size > 0) overlaps.set(filterType, filterOverlaps);
+  }
+  return overlaps;
+}
+
+function hasOverlappingTeamConditions(scope) {
+  return getOverlappingValuesByFilterType(scope).size > 0;
+}
+
 function isMultiTeamScopeValid(scope) {
   const teams = normalizeSelections(scope.teams ?? scope.team);
   if (teams.length < 2) return true;
@@ -1323,21 +1352,7 @@ function isMultiTeamScopeValid(scope) {
   if (allConditions.length === 0) return false;
   if (allConditions.some((condition) => !(condition.valueIds || []).length)) return false;
 
-  const filterTypes = getScopeFilterTypes(scope);
-  for (const filterType of filterTypes) {
-    const seenValues = new Set();
-    for (const team of teams) {
-      const condition = (scope.teamConditions?.[team] || []).find(
-        (entry) => entry.filterType === filterType
-      );
-      if (!condition) continue;
-      for (const value of condition.valueIds || []) {
-        if (seenValues.has(value)) return false;
-        seenValues.add(value);
-      }
-    }
-  }
-  return true;
+  return !hasOverlappingTeamConditions(scope);
 }
 
 function addMirroredCondition(teamConditions, teams, filterType) {
@@ -1415,6 +1430,10 @@ function ScopeTeamConditionsEditor({
     (filterType) => !activeFilterTypes.has(filterType)
   );
   const isMultiTeam = teams.length >= 2;
+  const overlappingValuesByFilterType = useMemo(
+    () => getOverlappingValuesByFilterType(scope),
+    [scope]
+  );
   const disabledValuesFor = (filterType) =>
     isMultiTeam ? getDisabledValuesForTeamField(scope, team, filterType) : new Set();
 
@@ -1458,22 +1477,43 @@ function ScopeTeamConditionsEditor({
         const FilterIcon = filterMeta?.icon || FileText;
         const valueOptions = filterMeta?.values || [];
         const disabledValues = disabledValuesFor(condition.filterType);
+        const overlappingValues =
+          overlappingValuesByFilterType.get(condition.filterType) ?? new Set();
+        const selectedValues = condition.valueIds || [];
+        const hasOverlapOnCondition = selectedValues.some((value) =>
+          overlappingValues.has(value)
+        );
         const valueMenuOpen =
           openConditionMenu?.kind === "value" &&
           menuTeam === team &&
           menuConditionId === condition.id;
-        const hasEmptyValue = !(condition.valueIds || []).length;
+        const hasEmptyValue = !selectedValues.length;
 
         return (
           <div
             key={condition.id}
-            className="relative inline-flex h-6 items-center rounded-md border border-neutral-300 bg-white text-[12px] text-neutral-800"
+            className={`relative inline-flex h-6 items-center rounded-md border text-[12px] ${
+              hasOverlapOnCondition
+                ? "border-red-300 bg-red-50/70 text-red-900"
+                : "border-neutral-300 bg-white text-neutral-800"
+            }`}
+            aria-invalid={hasOverlapOnCondition || undefined}
           >
-            <span className="inline-flex items-center gap-1 border-r border-neutral-300 px-2 py-[3px]">
+            <span
+              className={`inline-flex items-center gap-1 border-r px-2 py-[3px] ${
+                hasOverlapOnCondition ? "border-red-200" : "border-neutral-300"
+              }`}
+            >
               <FilterIcon size={12} className="text-neutral-500" />
               <span>{condition.filterType}</span>
             </span>
-            <span className="border-r border-neutral-300 px-2 py-[3px] text-neutral-700">is</span>
+            <span
+              className={`border-r px-2 py-[3px] text-neutral-700 ${
+                hasOverlapOnCondition ? "border-red-200" : "border-neutral-300"
+              }`}
+            >
+              is
+            </span>
             <button
               type="button"
               data-condition-menu-trigger=""
@@ -1486,9 +1526,16 @@ function ScopeTeamConditionsEditor({
                     : { kind: "value", team, conditionId: condition.id }
                 )
               }
-              className={`max-w-[150px] truncate border-r border-neutral-300 px-2 py-[3px] text-left transition-colors hover:bg-neutral-50 ${
-                hasEmptyValue ? "text-neutral-400" : "text-neutral-900"
-              }`}
+              className={`max-w-[150px] truncate border-r px-2 py-[3px] text-left transition-colors hover:bg-neutral-50/80 ${
+                hasOverlapOnCondition
+                  ? "border-red-200 text-red-700"
+                  : "border-neutral-300 text-neutral-900"
+              } ${hasEmptyValue ? "text-neutral-400" : ""}`}
+              title={
+                hasOverlapOnCondition
+                  ? "This value is also selected for another team"
+                  : undefined
+              }
             >
               {conditionValueLabel(condition)}
             </button>
@@ -1507,8 +1554,9 @@ function ScopeTeamConditionsEditor({
                 className="absolute left-0 top-full z-[120] mt-1 w-fit max-w-[160px] max-h-[260px] overflow-y-auto overflow-x-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl"
               >
                 {valueOptions.map((value) => {
-                  const checked = (condition.valueIds || []).includes(value);
+                  const checked = selectedValues.includes(value);
                   const optionDisabled = disabledValues.has(value) && !checked;
+                  const isOverlapping = checked && overlappingValues.has(value);
                   return (
                     <button
                       key={value}
@@ -1518,8 +1566,15 @@ function ScopeTeamConditionsEditor({
                       className={`flex max-w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] ${
                         optionDisabled
                           ? "cursor-not-allowed text-neutral-300"
-                          : "text-neutral-900 hover:bg-neutral-50"
+                          : isOverlapping
+                            ? "bg-red-50 text-red-700 hover:bg-red-100"
+                            : "text-neutral-900 hover:bg-neutral-50"
                       }`}
+                      title={
+                        isOverlapping
+                          ? "Also selected for another team — remove from one team"
+                          : undefined
+                      }
                     >
                       <span
                         className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
@@ -1753,7 +1808,7 @@ function AgentScopeTeamCard({
                       {renderConditionsForTeam(team)}
                     </div>
                   ))}
-                  <MutualExclusivityNote />
+                  {hasOverlappingTeamConditions(scope) ? <MutualExclusivityNote /> : null}
                 </div>
               ) : (
                 renderConditionsForTeam(teams[0])
@@ -1780,7 +1835,20 @@ function AgentScopeTeamCard({
               {showFallbackStatus ? (
                 <Row
                   label="Fallback status"
-                  subcopy="Status set when no one is available."
+                  subcopy={
+                    <>
+                      Status set when no one is available.{" "}
+                      <a
+                        href="#"
+                        className="inline-flex items-center gap-0.5 font-medium text-emerald-600 hover:text-emerald-700"
+                        onClick={(event) => event.preventDefault()}
+                      >
+                        Set up a Flow
+                        <ArrowUpRight size={12} strokeWidth={2.25} aria-hidden />
+                      </a>{" "}
+                      to handle this.
+                    </>
+                  }
                   noBorder
                 >
                   <Select

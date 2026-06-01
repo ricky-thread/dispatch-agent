@@ -41,7 +41,6 @@ import {
   Check,
   CheckSquare,
   ChevronDown,
-  ChevronUp,
   File,
   FileText,
   Folder,
@@ -117,10 +116,6 @@ const SCOPE_FILTER_METADATA = {
   "Company type": {
     icon: Building2,
     values: ["Managed Service", "Break Fix", "Internal", "Government"],
-  },
-  "Contact type": {
-    icon: Users,
-    values: ["Standard", "VIP", "Executive"],
   },
   "Agreement type": {
     icon: FileText,
@@ -1286,7 +1281,6 @@ function resolveScopeFallbackStatus(initial = {}) {
 function createTeamScope(id, initial = {}) {
   const teams = normalizeSelections(initial.teams ?? initial.team);
   const view = initial.view ?? initial.board ?? "";
-  const configured = isTeamScopeConfigured({ teams, view });
   const teamConditions = migrateLegacyScopeConditions(initial);
 
   return {
@@ -1297,7 +1291,6 @@ function createTeamScope(id, initial = {}) {
     statuses: resolveScopeStatuses({ ...initial, view }),
     fallbackStatus: resolveScopeFallbackStatus({ ...initial, view }),
     skipFlowAssignedTickets: initial.skipFlowAssignedTickets ?? false,
-    expanded: initial.expanded ?? !configured,
   };
 }
 
@@ -1648,7 +1641,6 @@ function AgentScopeTeamCard({
   excludedTeams = [],
   showFallbackStatus = false,
   onUpdate,
-  onRemove,
 }) {
   const [openConditionMenu, setOpenConditionMenu] = useState(null);
   const teams = normalizeSelections(scope.teams ?? scope.team);
@@ -1733,40 +1725,16 @@ function AgentScopeTeamCard({
 
   return (
     <div className="bg-white border border-neutral-200 rounded-lg overflow-visible">
-      <button
-        type="button"
-        onClick={() => onUpdate({ expanded: !scope.expanded })}
-        className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left hover:bg-neutral-50/80 transition-colors"
-        aria-expanded={scope.expanded}
-      >
+      <div className="px-5 py-3.5 border-b border-neutral-100">
         <span className="min-w-0 truncate text-sm">
           <ScopeCardHeaderLabel scope={scope} />
         </span>
-        <span className="flex shrink-0 items-center gap-[4px]">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
-            className="p-1.5 rounded-md text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-            aria-label="Remove scope section"
-          >
-            <Trash2 size={15} />
-          </button>
-          {scope.expanded ? (
-            <ChevronUp size={16} className="text-neutral-400" aria-hidden />
-          ) : (
-            <ChevronDown size={16} className="text-neutral-400" aria-hidden />
-          )}
-        </span>
-      </button>
+      </div>
 
-      {scope.expanded ? (
-        <div className="border-t border-neutral-100">
+      <div>
           <Row
             label="Dispatch to"
-            subcopy="Select the Inbox Team threads will be dispatched to."
+            subcopy="The Inbox Team threads will be dispatched to"
           >
             <MultiSelect
               values={teams}
@@ -1788,7 +1756,7 @@ function AgentScopeTeamCard({
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-neutral-900">Dispatch from</div>
                 <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                  Select the board to dispatch threads from. Add conditions to narrow the scope.
+                  The Board to dispatch threads from
                 </p>
               </div>
               <Select
@@ -1863,7 +1831,6 @@ function AgentScopeTeamCard({
             </>
           ) : null}
         </div>
-      ) : null}
     </div>
   );
 }
@@ -3059,10 +3026,6 @@ function ConfigPage({
     );
   };
 
-  const removeTeamScope = (id) => {
-    setTeamScopes((prev) => prev.filter((scope) => scope.id !== id));
-  };
-
   const handleSaveClick = () => {
     const primaryScope = teamScopes[0];
     const publishedAt = new Date();
@@ -3320,7 +3283,7 @@ function ConfigPage({
           <div className="mb-10">
             <div className="mb-3">
               <h2 className="text-base font-semibold text-neutral-900">
-                {dispatchMode === "Self-serve" ? "Scope" : "Agent scope"}
+                Dispatch scope
               </h2>
               <p className="text-sm text-neutral-500 mt-0.5">
                 {dispatchMode === "Self-serve"
@@ -3336,7 +3299,6 @@ function ConfigPage({
                   excludedTeams={excludedTeamsByScopeId[scope.id] ?? []}
                   showFallbackStatus={dispatchMode === "Auto-assign"}
                   onUpdate={(patch) => updateTeamScope(scope.id, patch)}
-                  onRemove={() => removeTeamScope(scope.id)}
                 />
               ))}
             </div>

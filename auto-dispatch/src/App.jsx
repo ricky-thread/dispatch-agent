@@ -3128,7 +3128,7 @@ function ConfigPage({
                       : "border-neutral-200 hover:border-neutral-300"
                   }`}
                 >
-                  <Sparkles size={18} className="shrink-0 text-neutral-400" strokeWidth={1.75} />
+                  <Users size={18} className="shrink-0 text-neutral-400" strokeWidth={1.75} />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-neutral-900">Auto-assign</div>
                     <p className="mt-0.5 text-sm text-neutral-500">

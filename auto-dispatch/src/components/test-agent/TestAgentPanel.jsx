@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
+  ClipboardList,
   ListOrdered,
   Search,
   ThumbsDown,
@@ -8,7 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { TeamLabel } from "../TeamIcon";
-import ThreadCard from "../ThreadCard";
+import ThreadCard, { PreviewThreadRow } from "../ThreadCard";
 import RecommendationCard from "./RecommendationCard";
 import {
   MAX_TEST_THREADS,
@@ -416,6 +417,11 @@ export default function TestAgentPanel({
     resetFeedback();
   };
 
+  const handleReset = () => {
+    setHasRunTest(false);
+    resetFeedback();
+  };
+
   const handleThumbsUp = () => {
     setFeedbackThanks(true);
   };
@@ -451,10 +457,277 @@ export default function TestAgentPanel({
     displayedThreads.length > 0 &&
     !feedbackDismissed;
 
+  const searchPlaceholder = isRecommendationMode
+    ? atMax
+      ? "Maximum of 10 threads reached"
+      : "Search from existing threads"
+    : atMax
+      ? "Maximum of 10 threads reached"
+      : "Search by ticket number or summary";
+
+  const previewDropdownThreads = useMemo(
+    () =>
+      isRecommendationMode
+        ? filteredThreads
+        : filteredThreads.filter((thread) => !selectedIds.includes(thread.id)),
+    [filteredThreads, isRecommendationMode, selectedIds]
+  );
+
+  const previewFirstSelectableIndex = useMemo(
+    () =>
+      isRecommendationMode
+        ? firstSelectableIndex
+        : previewDropdownThreads.length > 0
+          ? 0
+          : -1,
+    [firstSelectableIndex, isRecommendationMode, previewDropdownThreads.length]
+  );
+
+  const renderSearchDropdownItem = (thread, index, previewMode) => {
+    const isSelected = selectedIds.includes(thread.id);
+    const isPreHighlighted =
+      previewMode
+        ? index === previewFirstSelectableIndex
+        : !isSelected && index === firstSelectableIndex;
+
+    const itemContent = previewMode ? (
+      <>
+        <div className="text-sm font-medium leading-snug text-neutral-900">
+          {thread.title}
+        </div>
+        <div className="mt-0.5 text-xs leading-snug text-neutral-500">
+          {thread.number} • {thread.company}
+        </div>
+      </>
+    ) : (
+      <>
+        <div
+          className={`text-sm leading-snug ${
+            isSelected ? "text-neutral-500" : "text-neutral-900"
+          }`}
+        >
+          <span className="font-semibold">{thread.number}</span> {thread.title}
+        </div>
+        <div className="mt-1 text-xs leading-snug text-neutral-400">
+          <span>{thread.contact}</span>
+          <span className="mx-1.5 text-neutral-300">•</span>
+          <span>{thread.company}</span>
+        </div>
+      </>
+    );
+
+    if (!previewMode && isSelected) {
+      return (
+        <div
+          className="flex w-full items-start gap-2 rounded-md px-3 py-2.5 text-left"
+          aria-disabled="true"
+        >
+          <Check
+            size={14}
+            strokeWidth={2}
+            className="mt-0.5 shrink-0 text-emerald-600"
+            aria-hidden
+          />
+          <div className="min-w-0 flex-1">{itemContent}</div>
+        </div>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          event.stopPropagation();
+          handleSelectThread(thread.id);
+        }}
+        className={`w-full rounded-md px-3 py-2.5 text-left transition-colors hover:bg-neutral-100 ${
+          isPreHighlighted ? "bg-neutral-100" : ""
+        }`}
+      >
+        {itemContent}
+      </button>
+    );
+  };
+
+  const searchInput = (
+    <div ref={searchWrapRef} className="relative min-w-0 w-full">
+      <Search
+        size={14}
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+      />
+      <input
+        ref={searchInputRef}
+        type="text"
+        value={searchQuery}
+        disabled={atMax}
+        placeholder={searchPlaceholder}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={() => {
+          if (!atMax) setSearchOpen(true);
+        }}
+        onFocus={() => {
+          if (!atMax) setSearchOpen(true);
+        }}
+        onChange={(event) => {
+          setSearchQuery(event.target.value);
+          if (!atMax) setSearchOpen(true);
+        }}
+        className={`w-full rounded-md border border-neutral-200 py-2 pl-9 pr-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 ${
+          atMax ? "cursor-not-allowed bg-neutral-50 text-neutral-400" : ""
+        }`}
+      />
+      {searchOpen ? (
+        <div
+          className="absolute left-0 right-0 top-full z-30 mt-1.5 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.08)]"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {(isRecommendationMode ? filteredThreads : previewDropdownThreads).length > 0 ? (
+            <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
+              {(isRecommendationMode ? filteredThreads : previewDropdownThreads).map(
+                (thread, index) => (
+                  <li key={thread.id}>
+                    {renderSearchDropdownItem(thread, index, !isRecommendationMode)}
+                  </li>
+                )
+              )}
+            </ul>
+          ) : (
+            <div className="px-3 py-4 text-sm text-neutral-500">No matching threads</div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const runTestButton = (
+    <button
+      type="button"
+      disabled={!canRunTest}
+      onClick={handleRunTest}
+      className={`w-full rounded-md px-4 py-2.5 text-sm font-medium text-white ${
+        canRunTest
+          ? "bg-emerald-500 hover:bg-emerald-600"
+          : "cursor-not-allowed bg-emerald-400 opacity-50"
+      }`}
+    >
+      Run test
+    </button>
+  );
+
+  const previewSelectedThreads = useMemo(
+    () => selectedIds.map((id) => getTestAgentThread(id)).filter(Boolean),
+    [selectedIds]
+  );
+
+  const previewRankedThreads = useMemo(
+    () => displayedThreads,
+    [displayedThreads]
+  );
+
+  if (!isRecommendationMode) {
+    return (
+      <div className="flex h-full w-full flex-col">
+        <div className="shrink-0 px-6 pt-6">
+          <h2 className="text-base font-semibold text-neutral-900">Preview</h2>
+        </div>
+
+        <div className="relative z-20 shrink-0 px-6 pt-4">{searchInput}</div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-4">
+          {previewSelectedThreads.length > 0 ? (
+            <div>
+              {!hasRunTest ? (
+                <h3 className="mb-1 text-sm font-semibold text-neutral-900">Selected</h3>
+              ) : null}
+              {(hasRunTest ? previewRankedThreads : previewSelectedThreads).map(
+                (thread, index) => (
+                  <PreviewThreadRow
+                    key={thread.id}
+                    thread={thread}
+                    rank={hasRunTest ? index + 1 : undefined}
+                    onRemove={hasRunTest ? undefined : handleRemoveThread}
+                  />
+                )
+              )}
+            </div>
+          ) : (
+            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white px-6 py-16 text-center">
+              <ClipboardList
+                size={32}
+                strokeWidth={1.5}
+                className="mb-4 text-neutral-400"
+              />
+              <p className="max-w-[280px] text-sm leading-snug text-neutral-500">
+                Search for threads to see how your scoring rules would prioritize them.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="shrink-0 px-6 pb-6 pt-2">
+          {hasRunTest ? (
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleReset}
+                className="flex-1 rounded-md border border-emerald-500 px-4 py-2.5 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                disabled={!canRunTest}
+                onClick={handleRunTest}
+                className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium text-white ${
+                  canRunTest
+                    ? "bg-emerald-500 hover:bg-emerald-600"
+                    : "cursor-not-allowed bg-emerald-400 opacity-50"
+                }`}
+              >
+                Run test
+              </button>
+            </div>
+          ) : (
+            runTestButton
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const threadResults = displayedThreads.length > 0 ? (
+    showTeamGroupedThreads ? (
+      <div className="space-y-5">
+        {teamSections.map((section) => (
+          <section key={section.team}>
+            <div className="mb-2">
+              <TeamLabel team={section.team} />
+            </div>
+            <ThreadCardList
+              threads={section.threads}
+              hasRunTest={hasRunTest}
+              rankingById={rankingById}
+              onRemoveThread={handleRemoveThread}
+            />
+          </section>
+        ))}
+      </div>
+    ) : (
+      <ThreadCardList
+        threads={displayedThreads}
+        hasRunTest={hasRunTest}
+        rankingById={rankingById}
+        onRemoveThread={handleRemoveThread}
+      />
+    )
+  ) : null;
+
   return (
     <div className="flex h-full w-full flex-col">
       <div className="shrink-0 px-6 pt-6">
-        <h2 className="text-base font-medium text-neutral-900">Test agent</h2>
+        <h2 className="text-base font-semibold text-neutral-900">Test agent</h2>
         <p className="mt-1 text-[13px] leading-snug text-neutral-500">
           See how the Dispatch Agent ranks tickets with your current config.
         </p>
@@ -463,109 +736,7 @@ export default function TestAgentPanel({
       <div className="relative z-20 shrink-0 px-6 pt-6">
         <div className="mb-2 text-sm font-medium text-neutral-900">Search</div>
         <div className="flex items-center gap-2">
-          <div ref={searchWrapRef} className="relative min-w-0 flex-1">
-            <Search
-              size={14}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
-            />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              disabled={atMax}
-              placeholder={
-                atMax
-                  ? "Maximum of 10 threads reached"
-                  : "Search from existing threads"
-              }
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={() => {
-                if (!atMax) setSearchOpen(true);
-              }}
-              onFocus={() => {
-                if (!atMax) setSearchOpen(true);
-              }}
-              onChange={(event) => {
-                setSearchQuery(event.target.value);
-                if (!atMax) setSearchOpen(true);
-              }}
-              className={`w-full rounded-md border border-neutral-200 py-2 pl-9 pr-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 ${
-                atMax ? "cursor-not-allowed bg-neutral-50 text-neutral-400" : ""
-              }`}
-            />
-            {searchOpen ? (
-              <div
-                className="absolute left-0 right-0 top-full z-30 mt-1.5 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.08)]"
-                onMouseDown={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-              >
-                {filteredThreads.length > 0 ? (
-                  <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-                    {filteredThreads.map((thread, index) => {
-                      const isSelected = selectedIds.includes(thread.id);
-                      const isPreHighlighted =
-                        !isSelected && index === firstSelectableIndex;
-
-                      const itemContent = (
-                        <>
-                          <div
-                            className={`text-sm leading-snug ${
-                              isSelected ? "text-neutral-500" : "text-neutral-900"
-                            }`}
-                          >
-                            <span className="font-semibold">{thread.number}</span>{" "}
-                            {thread.title}
-                          </div>
-                          <div className="mt-1 text-xs leading-snug text-neutral-400">
-                            <span>{thread.contact}</span>
-                            <span className="mx-1.5 text-neutral-300">•</span>
-                            <span>{thread.company}</span>
-                          </div>
-                        </>
-                      );
-
-                      return (
-                        <li key={thread.id}>
-                          {isSelected ? (
-                            <div
-                              className="flex w-full items-start gap-2 rounded-md px-3 py-2.5 text-left"
-                              aria-disabled="true"
-                            >
-                              <Check
-                                size={14}
-                                strokeWidth={2}
-                                className="mt-0.5 shrink-0 text-emerald-600"
-                                aria-hidden
-                              />
-                              <div className="min-w-0 flex-1">{itemContent}</div>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleSelectThread(thread.id);
-                              }}
-                              className={`w-full rounded-md px-3 py-2.5 text-left transition-colors hover:bg-neutral-100 ${
-                                isPreHighlighted ? "bg-neutral-100" : ""
-                              }`}
-                            >
-                              {itemContent}
-                            </button>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <div className="px-3 py-4 text-sm text-neutral-500">
-                    No matching threads
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </div>
+          <div className="min-w-0 flex-1">{searchInput}</div>
           <button
             type="button"
             disabled={!canRunTest}
@@ -625,7 +796,7 @@ export default function TestAgentPanel({
         />
 
         {displayedThreads.length > 0 ? (
-          hasRunTest && isRecommendationMode ? (
+          hasRunTest ? (
             showTeamGroupedThreads && teamRecommendationSections ? (
               <div className="space-y-5">
                 {teamRecommendationSections.map((section) => (
@@ -680,9 +851,7 @@ export default function TestAgentPanel({
               className="mb-4 text-neutral-300"
             />
             <p className="max-w-[260px] text-sm leading-snug text-neutral-500">
-              {isRecommendationMode
-                ? "Select one or more threads to see who the agent would assign."
-                : "Select one or more threads to see how they would be ranked."}
+              Select one or more threads to see who the agent would assign.
             </p>
           </div>
         )}

@@ -145,6 +145,79 @@ export function ThreadCardBody({ thread, onRemove }) {
   );
 }
 
+export function PreviewThreadRow({ thread, rank, onRemove }) {
+  const slaStyle = SLA_STYLES[thread.slaLabel] ?? SLA_STYLES["On time"];
+  const sentimentConfig =
+    SENTIMENT_ICONS[thread.sentiment] ?? SENTIMENT_ICONS.neutral;
+  const SentimentIcon = sentimentConfig.Icon;
+  const isVip = thread.contactType === "VIP";
+
+  return (
+    <div className="relative border-b border-neutral-100 py-3 last:border-b-0">
+      <div className="flex items-start gap-3">
+        {rank != null ? (
+          <span className="w-4 shrink-0 pt-0.5 text-sm font-medium text-neutral-900">
+            {rank}.
+          </span>
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium leading-snug text-neutral-900">
+            {thread.title}
+          </div>
+          <div className="mt-0.5 text-xs leading-snug text-neutral-500">
+            {thread.number} • {thread.company}
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span
+              className={`h-2.5 w-2.5 shrink-0 rounded-[2px] ${thread.typeColor}`}
+              aria-hidden
+            />
+            <PersonAvatar
+              initials={thread.assigneeInitials}
+              colorClass={thread.assigneeColor}
+              size="sm"
+            />
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_BADGE_CLASS}`}
+            >
+              {thread.status}
+            </span>
+            <SentimentIcon
+              size={13}
+              className={`shrink-0 ${sentimentConfig.className}`}
+              strokeWidth={1.75}
+              aria-label={
+                thread.sentiment
+                  ? `${thread.sentiment} client sentiment`
+                  : "Client sentiment"
+              }
+            />
+            <span className={`flex items-center gap-1 text-[11px] ${slaStyle.textClass}`}>
+              <SlaStatusIcon stroke={slaStyle.stroke} />
+              {thread.slaLabel}
+            </span>
+            {isVip ? (
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                VIP
+              </span>
+            ) : null}
+          </div>
+        </div>
+        {onRemove ? (
+          <button
+            type="button"
+            onClick={() => onRemove(thread.id)}
+            className="shrink-0 rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+            aria-label={`Remove ${thread.title}`}
+          >
+            <X size={14} />
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function ThreadCard({ thread, onRemove, ranking }) {
   return (
     <div className="group relative border-b border-neutral-200 bg-white last:border-b-0 hover:bg-neutral-50/50">

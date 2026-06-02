@@ -1533,7 +1533,7 @@ function ScopeTeamConditionsEditor({
                     : { kind: "value", team, conditionId: condition.id }
                 )
               }
-              className={`max-w-[150px] truncate border-r px-2 py-[3px] text-left transition-colors hover:bg-neutral-50/80 ${
+              className={`max-w-[230px] truncate border-r px-2 py-[3px] text-left transition-colors hover:bg-neutral-50/80 ${
                 hasOverlapOnCondition
                   ? "border-red-200 text-red-700"
                   : "border-neutral-300 text-neutral-900"
@@ -1558,7 +1558,7 @@ function ScopeTeamConditionsEditor({
             {valueMenuOpen ? (
               <div
                 data-condition-menu=""
-                className="absolute left-0 top-full z-[120] mt-1 w-fit max-w-[160px] max-h-[260px] overflow-y-auto overflow-x-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl"
+                className="absolute left-0 top-full z-[120] mt-1 w-fit max-w-[240px] max-h-[260px] overflow-y-auto overflow-x-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl"
               >
                 {valueOptions.map((value) => {
                   const checked = selectedValues.includes(value);
@@ -1626,7 +1626,7 @@ function ScopeTeamConditionsEditor({
           {openConditionMenu?.kind === "field" && openConditionMenu.team === team ? (
             <div
               data-condition-menu=""
-              className="absolute left-0 top-full z-[120] mt-1 w-fit max-w-[160px] overflow-x-hidden rounded-xl border border-neutral-200 bg-white p-2 shadow-xl"
+              className="absolute left-0 top-full z-[120] mt-1 w-fit max-w-[240px] overflow-x-hidden rounded-xl border border-neutral-200 bg-white p-2 shadow-xl"
             >
               {availableFilterOptions.map((filterType) => {
                 const FilterIcon = SCOPE_FILTER_METADATA[filterType]?.icon || FileText;

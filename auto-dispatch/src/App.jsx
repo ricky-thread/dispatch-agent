@@ -1937,6 +1937,11 @@ function clampRankingWeight(value, fallback = 0) {
   return Number.isFinite(next) ? Math.max(0, Math.min(100, Math.round(next))) : fallback;
 }
 
+function getRankingWeightSharePercent(signalValue, totalWeight) {
+  if (totalWeight === 0) return 0;
+  return Math.round((signalValue / totalWeight) * 100);
+}
+
 function mergeRankingSignalDefinition(definition, saved) {
   const nextValue = Number(saved?.value);
   const hasOptions = Array.isArray(definition.options) && definition.options.length > 0;
@@ -2017,7 +2022,14 @@ function buildAgentInstructionsFromSignals(signals) {
 ${signalLines.join("\n")}`;
 }
 
-function RankingPropertyRow({ signal, onSetWeight, onPatchSignal, isFirst, isLast }) {
+function RankingPropertyRow({
+  signal,
+  weightSharePercent,
+  onSetWeight,
+  onPatchSignal,
+  isFirst,
+  isLast,
+}) {
   const hasOptions = Array.isArray(signal.options) && signal.options.length > 0;
 
   return (
@@ -2073,8 +2085,8 @@ function RankingPropertyRow({ signal, onSetWeight, onPatchSignal, isFirst, isLas
               onValueChange={([value]) => onSetWeight(signal.id, value)}
             />
           </div>
-          <span className="shrink-0 text-right text-xs tabular-nums text-neutral-500">
-            {signal.value}/100
+          <span className="shrink-0 text-right text-xs tabular-nums text-neutral-400">
+            {weightSharePercent}%
           </span>
         </div>
       </div>
@@ -2092,13 +2104,9 @@ const GUIDANCE_AGENT_CONTEXT_ITEMS = [
   "Ticket configuration",
 ];
 
-const RANKING_SIGNALS_INFO_TITLE = "How ranking works";
-const RANKING_SIGNALS_INFO_PARAGRAPHS = [
-  "Set how much each ticket property matters for ranking. Set a property to 0 to exclude it from scoring.",
-  "Each ticket earns a score based on how it matches — for example SLA breaching or an unanswered client reply. Higher total score = served first.",
-];
-const RANKING_SIGNALS_INFO_FOOTNOTE =
-  "Scores update when ticket details change. Test a few scenarios in the panel on the right.";
+const RANKING_SIGNALS_INFO_TITLE = "How scoring works";
+const RANKING_SIGNALS_INFO_BODY =
+  "Each signal has a weight you control. Tickets earn points based on how they match each signal – for example, a breaching SLA or an unanswered client reply. The ticket with the highest total score ranks first.";
 
 function GuidanceSection({
   guidanceTab,
@@ -2240,6 +2248,8 @@ function GuidanceSection({
 }
 
 function RankingSignalsSection({ signals, onChangeSignals }) {
+  const totalWeight = signals.reduce((sum, signal) => sum + (Number(signal.value) || 0), 0);
+
   const handleSetWeight = (signalId, value) => {
     const clamped = clampRankingWeight(value);
     onChangeSignals((prev) =>
@@ -2279,17 +2289,12 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
               <div className="text-sm font-medium text-neutral-900">
                 {RANKING_SIGNALS_INFO_TITLE}
               </div>
-              <div className="mt-2 space-y-2 text-sm text-neutral-500">
-                {RANKING_SIGNALS_INFO_PARAGRAPHS.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
-                ))}
-              </div>
-              <p className="mt-3 text-xs text-neutral-400">{RANKING_SIGNALS_INFO_FOOTNOTE}</p>
+              <p className="mt-2 text-sm text-neutral-500">{RANKING_SIGNALS_INFO_BODY}</p>
             </TooltipContent>
           </Tooltip>
         </div>
         <p className="mt-0.5 text-sm text-neutral-500">
-          Adjust each property&apos;s importance. Set a property to 0 to exclude it from scoring.
+          Set how much each signal influences ticket ranking. Signals set to 0 are excluded.
         </p>
       </div>
 
@@ -2298,6 +2303,7 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
           <RankingPropertyRow
             key={signal.id}
             signal={signal}
+            weightSharePercent={getRankingWeightSharePercent(signal.value, totalWeight)}
             isFirst={index === 0}
             isLast={index === signals.length - 1}
             onSetWeight={handleSetWeight}

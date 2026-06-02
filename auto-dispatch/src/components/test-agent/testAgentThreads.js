@@ -281,7 +281,7 @@ function hasDropdownSelection(selectedOption) {
   return typeof selectedOption === "string" && selectedOption.trim() !== "";
 }
 
-/** Match multi-select filter from Thread scoring: match = 1, no selection = 0.5, mismatch = 0. */
+/** Match multi-select filter from Thread scoring: match = 1, no selection = 0, mismatch = 0. */
 function getSignalSelectedOptions(signalConfig) {
   if (Array.isArray(signalConfig?.selectedOptions) && signalConfig.selectedOptions.length > 0) {
     return signalConfig.selectedOptions;
@@ -292,7 +292,7 @@ function getSignalSelectedOptions(signalConfig) {
   return [];
 }
 
-function getMultiSelectFilterSignal(threadValue, selectedOptions, { matchLabel, noSelectionFactor = 0.5 }) {
+function getMultiSelectFilterSignal(threadValue, selectedOptions, { matchLabel, noSelectionFactor = 0 }) {
   const selections = Array.isArray(selectedOptions)
     ? selectedOptions.filter((opt) => typeof opt === "string" && opt.trim() !== "")
     : [];

@@ -621,12 +621,17 @@ export default function TestAgentPanel({
     [selectedIds]
   );
 
-  const previewRankedThreads = useMemo(
-    () => displayedThreads,
-    [displayedThreads]
-  );
-
   if (!isRecommendationMode) {
+    const renderPreviewRows = (threads, showRank) =>
+      threads.map((thread, index) => (
+        <PreviewThreadRow
+          key={thread.id}
+          thread={thread}
+          rank={showRank ? index + 1 : undefined}
+          onRemove={showRank ? undefined : handleRemoveThread}
+        />
+      ));
+
     return (
       <div className="flex h-full w-full flex-col">
         <div className="shrink-0 px-6 pt-6">
@@ -637,21 +642,28 @@ export default function TestAgentPanel({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-4">
           {previewSelectedThreads.length > 0 ? (
-            <div>
-              {!hasRunTest ? (
-                <h3 className="mb-1 text-sm font-semibold text-neutral-900">Selected</h3>
-              ) : null}
-              {(hasRunTest ? previewRankedThreads : previewSelectedThreads).map(
-                (thread, index) => (
-                  <PreviewThreadRow
-                    key={thread.id}
-                    thread={thread}
-                    rank={hasRunTest ? index + 1 : undefined}
-                    onRemove={hasRunTest ? undefined : handleRemoveThread}
-                  />
-                )
-              )}
-            </div>
+            showTeamGroupedThreads ? (
+              <div className="space-y-5">
+                {teamSections.map((section) => (
+                  <section key={section.team}>
+                    <div className="mb-2">
+                      <TeamLabel team={section.team} />
+                    </div>
+                    {renderPreviewRows(section.threads, hasRunTest)}
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <div>
+                {!hasRunTest ? (
+                  <h3 className="mb-1 text-sm font-semibold text-neutral-900">Selected</h3>
+                ) : null}
+                {renderPreviewRows(
+                  hasRunTest ? displayedThreads : previewSelectedThreads,
+                  hasRunTest
+                )}
+              </div>
+            )
           ) : (
             <div className="flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white px-6 py-16 text-center">
               <ClipboardList

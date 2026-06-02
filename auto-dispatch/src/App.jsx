@@ -111,6 +111,20 @@ function formatLastPublished(date) {
   });
   return `Last published ${month} ${day} at ${time}`;
 }
+
+function formatLastSaved(date) {
+  const datePart = date.toLocaleString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const timePart = date.toLocaleString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `Last saved on ${datePart} at ${timePart}`;
+}
 const SCOPE_BOARD_OPTIONS = ["Help Desk", "Network", "Projects", "Voice"];
 const SCOPE_FILTER_METADATA = {
   "Company type": {
@@ -2516,6 +2530,9 @@ function AgentCard({
   const boardNoun = boardCount === 1 ? "board" : "boards";
   const teamNoun = teamCount === 1 ? "team" : "teams";
   const subtitle = `Dispatching from ${boardCount} ${boardNoun} across ${teamCount} ${teamNoun}`;
+  const lastSavedAt = agent.lastPublishedAt ? new Date(agent.lastPublishedAt) : null;
+  const lastSavedLabel =
+    lastSavedAt && !Number.isNaN(lastSavedAt.getTime()) ? formatLastSaved(lastSavedAt) : null;
 
   return (
     <div className="bg-white border border-neutral-200 rounded-xl overflow-visible">
@@ -2531,7 +2548,9 @@ function AgentCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-neutral-900">{displayTitle}</div>
-          <div className="text-xs text-neutral-500 mt-0.5 truncate">{subtitle}</div>
+          {lastSavedLabel ? (
+            <div className="text-xs text-neutral-500 mt-0.5">{lastSavedLabel}</div>
+          ) : null}
         </div>
         <div onClick={(e) => e.stopPropagation()}>
           <Switch
@@ -2559,9 +2578,7 @@ function AgentCard({
       >
         <div className="flex-1 min-w-0 py-2 pr-3">
           <div className="text-sm font-medium text-neutral-900">Configuration</div>
-          <div className="text-xs text-neutral-500 mt-0.5">
-            Adjust scope and assignment logic for this agent.
-          </div>
+          <div className="text-xs text-neutral-500 mt-0.5 truncate">{subtitle}</div>
         </div>
         <div className="relative shrink-0 self-stretch flex items-center" data-agent-card-menu>
           <button
@@ -3636,9 +3653,14 @@ function ConfigPage({
             </div>
           )}
           <div className="flex w-full items-center justify-end gap-3">
-            {lastPublishedAt ? (
+            {lastPublishedAt && dispatchMode !== "Self-serve" ? (
               <span className="mr-auto text-xs text-neutral-400">
                 {formatLastPublished(lastPublishedAt)}
+              </span>
+            ) : null}
+            {lastPublishedAt && dispatchMode === "Self-serve" ? (
+              <span className="text-xs text-neutral-500">
+                {formatLastSaved(lastPublishedAt)}
               </span>
             ) : null}
             <button

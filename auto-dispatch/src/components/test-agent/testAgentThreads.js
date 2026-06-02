@@ -225,8 +225,8 @@ export const TEST_AGENT_THREADS = [
 export const MAX_TEST_THREADS = 10;
 
 export const DEFAULT_TEST_AGENT_SIGNALS = [
-  { id: "priority", enabled: true, value: 18 },
   { id: "sla-risk", enabled: true, value: 25 },
+  { id: "priority", enabled: true, value: 18 },
   { id: "ticket-age", enabled: true, value: 10 },
   { id: "client-replied", enabled: true, value: 20 },
   { id: "sentiment", enabled: true, value: 12 },

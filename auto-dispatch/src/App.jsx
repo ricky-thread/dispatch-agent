@@ -76,6 +76,7 @@ import {
   Workflow,
   X,
   Zap,
+  RotateCcw,
 } from "lucide-react";
 
 import {
@@ -1874,18 +1875,18 @@ const AGENT_CONTEXT_FIELDS = [
 
 const RANKING_SIGNAL_DEFINITIONS = [
   {
-    id: "priority",
-    name: "Priority",
-    description: "Higher priority tickets rank first.",
-    enabled: true,
-    value: 18,
-  },
-  {
     id: "sla-risk",
     name: "SLA risk",
     description: "Tickets closer to breaching rank higher.",
     enabled: true,
     value: 25,
+  },
+  {
+    id: "priority",
+    name: "Priority",
+    description: "Higher priority tickets rank first.",
+    enabled: true,
+    value: 18,
   },
   {
     id: "ticket-age",
@@ -1954,6 +1955,69 @@ function clampRankingWeight(value, fallback = 0) {
 function getRankingWeightSharePercent(signalValue, totalWeight) {
   if (totalWeight === 0) return 0;
   return Math.round((signalValue / totalWeight) * 100);
+}
+
+const RANKING_SIGNAL_SUMMARY_LABELS = {
+  "sla-risk": "SLA risk",
+  priority: "priority",
+  "ticket-age": "ticket age",
+  "client-replied": "client replies",
+  sentiment: "sentiment",
+  "contact-type": "contact type",
+  "company-type": "company type",
+  "agreement-type": "agreement type",
+};
+
+function getSignalSummaryLabel(signal) {
+  return RANKING_SIGNAL_SUMMARY_LABELS[signal.id] ?? signal.name.toLowerCase();
+}
+
+function RankingSignalSummaryLabel({ signal }) {
+  return <span className="font-semibold">{getSignalSummaryLabel(signal)}</span>;
+}
+
+function RankingSignalsSummary({ signals, totalWeight }) {
+  const active = signals
+    .filter((signal) => (Number(signal.value) || 0) > 0)
+    .map((signal) => ({
+      signal,
+      share: getRankingWeightSharePercent(signal.value, totalWeight),
+    }))
+    .sort((a, b) => b.share - a.share);
+
+  if (active.length === 0) {
+    return "No signals are currently influencing thread ranking.";
+  }
+
+  if (active.length === 1) {
+    return (
+      <>
+        Threads are ranked entirely by <RankingSignalSummaryLabel signal={active[0].signal} />.
+      </>
+    );
+  }
+
+  const shares = active.map((entry) => entry.share);
+  const maxShare = Math.max(...shares);
+  const minShare = Math.min(...shares);
+  if (maxShare - minShare <= 2) {
+    return "Signals are weighted roughly equally.";
+  }
+
+  const [first, second, third] = active;
+
+  return (
+    <>
+      Threads are primarily ranked by <RankingSignalSummaryLabel signal={first.signal} /> and{" "}
+      <RankingSignalSummaryLabel signal={second.signal} />
+      {third && second.share - third.share >= 2 ? (
+        <>
+          , with some weight on <RankingSignalSummaryLabel signal={third.signal} />
+        </>
+      ) : null}
+      .
+    </>
+  );
 }
 
 function mergeRankingSignalDefinition(definition, saved) {
@@ -2041,14 +2105,13 @@ function RankingPropertyRow({
   weightSharePercent,
   onSetWeight,
   onPatchSignal,
-  isFirst,
   isLast,
 }) {
   const hasOptions = Array.isArray(signal.options) && signal.options.length > 0;
 
   return (
     <div
-      className={`flex items-center gap-4 bg-white px-5 py-4 ${isFirst ? "rounded-t-lg" : ""} ${
+      className={`flex items-center gap-4 bg-white px-5 py-4 ${
         isLast ? "rounded-b-lg" : "border-b border-neutral-200"
       }`}
     >
@@ -2279,6 +2342,10 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
     );
   };
 
+  const handleResetToDefault = () => {
+    onChangeSignals(normalizeRankingSignals([]));
+  };
+
   return (
     <div className="mb-10">
       <div className="mb-3">
@@ -2313,12 +2380,24 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
       </div>
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+        <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
+          <p className="min-w-0 flex-1 text-sm text-neutral-500">
+            <RankingSignalsSummary signals={signals} totalWeight={totalWeight} />
+          </p>
+          <button
+            type="button"
+            onClick={handleResetToDefault}
+            className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700"
+          >
+            <RotateCcw size={14} aria-hidden />
+            Reset to default
+          </button>
+        </div>
         {signals.map((signal, index) => (
           <RankingPropertyRow
             key={signal.id}
             signal={signal}
             weightSharePercent={getRankingWeightSharePercent(signal.value, totalWeight)}
-            isFirst={index === 0}
             isLast={index === signals.length - 1}
             onSetWeight={handleSetWeight}
             onPatchSignal={handlePatchSignal}

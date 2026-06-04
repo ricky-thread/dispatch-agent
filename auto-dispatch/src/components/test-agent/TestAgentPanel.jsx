@@ -709,33 +709,6 @@ export default function TestAgentPanel({
     );
   }
 
-  const threadResults = displayedThreads.length > 0 ? (
-    showTeamGroupedThreads ? (
-      <div className="space-y-5">
-        {teamSections.map((section) => (
-          <section key={section.team}>
-            <div className="mb-2">
-              <TeamLabel team={section.team} />
-            </div>
-            <ThreadCardList
-              threads={section.threads}
-              hasRunTest={hasRunTest}
-              rankingById={rankingById}
-              onRemoveThread={handleRemoveThread}
-            />
-          </section>
-        ))}
-      </div>
-    ) : (
-      <ThreadCardList
-        threads={displayedThreads}
-        hasRunTest={hasRunTest}
-        rankingById={rankingById}
-        onRemoveThread={handleRemoveThread}
-      />
-    )
-  ) : null;
-
   return (
     <div className="flex h-full w-full flex-col">
       <div className="shrink-0 px-6 pt-6">

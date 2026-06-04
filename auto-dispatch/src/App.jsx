@@ -52,7 +52,6 @@ import {
   Lock,
   MessageSquare,
   ListOrdered,
-  Code2,
   MoreHorizontal,
   Package,
   Pencil,
@@ -60,7 +59,6 @@ import {
   Phone,
   Plug,
   Plus,
-  Search,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -68,7 +66,6 @@ import {
   Tag,
   Target,
   Trash2,
-  TriangleAlert,
   ArrowUpRight,
   Users,
   Wallet,
@@ -644,485 +641,6 @@ function MultiSelect({
   );
 }
 
-/** Chips + inline filter inside one bordered control; dropdown lists members on focus/click. */
-function ExcludeTechsCombo({
-  values,
-  onChange,
-  options,
-  disabled,
-  disabledMessage = "Select teams first",
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const rootRef = useRef(null);
-  const inputRef = useRef(null);
-
-  const normalizedQuery = query.trim().toLowerCase();
-  const filteredMembers = useMemo(
-    () => options.filter((m) => m.toLowerCase().includes(normalizedQuery)),
-    [options, normalizedQuery]
-  );
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const handlePointerDown = (event) => {
-      if (rootRef.current?.contains(event.target)) return;
-      setOpen(false);
-    };
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) setQuery("");
-  }, [open]);
-
-  const toggleMember = (member) => {
-    if (values.includes(member)) {
-      onChange(values.filter((v) => v !== member));
-    } else {
-      onChange([...values, member]);
-    }
-  };
-
-  return (
-    <div ref={rootRef} className="relative w-full">
-      <div
-        className={`flex w-full min-h-[42px] items-stretch gap-2 rounded-md border bg-white px-2 py-1.5 transition-shadow ${
-          disabled
-            ? "cursor-not-allowed border-neutral-200 bg-neutral-50 opacity-75"
-            : `cursor-text border-neutral-200 hover:border-neutral-300 ${
-                open ? "border-emerald-500 ring-2 ring-emerald-500/20" : ""
-              }`
-        }`}
-        onMouseDown={(e) => {
-          if (disabled) return;
-          if (e.target.closest("[data-chip-remove]")) return;
-          e.preventDefault();
-          inputRef.current?.focus();
-          setOpen(true);
-        }}
-      >
-        <div className="flex min-h-[28px] min-w-0 flex-1 flex-wrap items-center gap-1.5">
-          {values.map((member) => (
-            <span
-              key={member}
-              className="inline-flex max-w-[240px] items-center gap-1 rounded-md border border-neutral-300 bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800"
-            >
-              <span className="truncate">{member}</span>
-              <button
-                type="button"
-                data-chip-remove
-                className="shrink-0 rounded p-0.5 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onChange(values.filter((v) => v !== member));
-                }}
-                aria-label={`Remove ${member}`}
-              >
-                <X size={11} strokeWidth={2.5} />
-              </button>
-            </span>
-          ))}
-          <input
-            ref={inputRef}
-            type="text"
-            disabled={disabled}
-            autoComplete="off"
-            aria-autocomplete="list"
-            aria-expanded={open}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setOpen(true);
-            }}
-            onFocus={() => {
-              if (!disabled) setOpen(true);
-            }}
-            placeholder={
-              disabled
-                ? disabledMessage
-                : values.length === 0
-                  ? "Search members…"
-                  : "Filter…"
-            }
-            className="min-w-[96px] flex-1 bg-transparent py-1 pl-1 pr-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
-          />
-        </div>
-        {!disabled && options.length > 0 ? (
-          <div className="flex shrink-0 items-center border-l border-neutral-200 pl-2">
-            <span className="whitespace-nowrap text-xs tabular-nums text-neutral-500">
-              {values.length} / {options.length}
-            </span>
-          </div>
-        ) : null}
-      </div>
-
-      {open && !disabled ? (
-        <div
-          className="absolute left-0 right-0 top-[calc(100%+4px)] z-40 max-h-64 overflow-y-auto rounded-md border border-neutral-200 bg-white py-1 shadow-lg"
-          role="listbox"
-        >
-          {filteredMembers.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-neutral-500">No matching members</div>
-          ) : (
-            filteredMembers.map((member) => {
-              const selected = values.includes(member);
-              return (
-                <button
-                  key={member}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    toggleMember(member);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  <span
-                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                      selected
-                        ? "border-emerald-500 bg-emerald-500"
-                        : "border-neutral-300 bg-white"
-                    }`}
-                  >
-                    {selected ? <Check size={11} className="text-white" strokeWidth={3} /> : null}
-                  </span>
-                  <span className={`min-w-0 flex-1 truncate ${selected ? "font-semibold" : ""}`}>
-                    {member}
-                  </span>
-                </button>
-              );
-            })
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * Route rule conditions (v3):
- * v2 shape stored on each rule:
- * { id, version: 2, fieldId, operator: "is" | "isNot" | "isBlank" | "isNotBlank", valueIds: string[] }
- *
- * UI:
- *  - "Add condition" opens a field picker (with icons).
- *  - Each condition renders as a pill: [icon + field] [operator] [value label or "..."] [X].
- *  - Clicking the operator segment opens an operator menu with a check on the active one.
- *  - Clicking the value segment opens a searchable checklist. Closing with nothing selected removes the pill.
- */
-
-const OPERATOR_LABELS = {
-  is: "is",
-  isNot: "is not",
-  isBlank: "Is blank",
-  isNotBlank: "Is not blank",
-};
-const OPERATOR_OPTIONS = ["is", "isNot", "isBlank", "isNotBlank"];
-const OPERATOR_NEEDS_VALUE = (op) => op === "is" || op === "isNot";
-
-function RouteRuleConditionsEditor({ fields, conditions = [], onChange }) {
-  const wrapperRef = useRef(null);
-  const onChangeRef = useRef(onChange);
-
-  // `openMenu`: { kind: "field" } | { kind: "operator", conditionId } | { kind: "value", conditionId } | null
-  const [openMenu, setOpenMenu] = useState(null);
-  const [valueSearch, setValueSearch] = useState("");
-  const searchInputRef = useRef(null);
-
-  useEffect(() => {
-    onChangeRef.current = onChange;
-  }, [onChange]);
-
-  const fieldById = useMemo(() => {
-    const map = new Map();
-    fields.forEach((f) => map.set(f.id, f));
-    return map;
-  }, [fields]);
-
-  const availableFields = useMemo(
-    () => fields.filter((f) => !conditions.some((c) => c.fieldId === f.id)),
-    [fields, conditions]
-  );
-
-  const emit = (next) => onChangeRef.current?.(next);
-
-  useEffect(() => {
-    const closeAndCleanup = () => {
-      if (openMenu?.kind === "value") {
-        const cleaned = conditions.filter(
-          (c) => !OPERATOR_NEEDS_VALUE(c.operator) || (c.valueIds || []).length > 0
-        );
-        if (cleaned.length !== conditions.length) {
-          onChangeRef.current?.(cleaned);
-        }
-      }
-      setOpenMenu(null);
-      setValueSearch("");
-    };
-    const onMouseDown = (event) => {
-      if (!wrapperRef.current) return;
-      if (wrapperRef.current.contains(event.target)) return;
-      closeAndCleanup();
-    };
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") closeAndCleanup();
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [openMenu, conditions]);
-
-  useEffect(() => {
-    if (openMenu?.kind === "value" && searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
-  }, [openMenu]);
-
-  const addCondition = (field) => {
-    const nextCondition = {
-      id: newConditionId(),
-      version: 2,
-      fieldId: field.id,
-      operator: "is",
-      valueIds: [],
-    };
-    emit([...conditions, nextCondition]);
-    // Immediately open its value menu.
-    setOpenMenu({ kind: "value", conditionId: nextCondition.id });
-    setValueSearch("");
-  };
-
-  const updateCondition = (conditionId, patch) => {
-    emit(conditions.map((c) => (c.id === conditionId ? { ...c, ...patch } : c)));
-  };
-
-  const removeCondition = (conditionId) => {
-    emit(conditions.filter((c) => c.id !== conditionId));
-    if (openMenu?.conditionId === conditionId) {
-      setOpenMenu(null);
-    }
-  };
-
-  const toggleValueId = (condition, valueId) => {
-    const current = condition.valueIds || [];
-    const next = current.includes(valueId)
-      ? current.filter((id) => id !== valueId)
-      : [...current, valueId];
-    updateCondition(condition.id, { valueIds: next });
-  };
-
-  const selectOperator = (condition, nextOperator) => {
-    const patch = { operator: nextOperator };
-    if (!OPERATOR_NEEDS_VALUE(nextOperator)) {
-      patch.valueIds = [];
-    }
-    updateCondition(condition.id, patch);
-    setOpenMenu(null);
-  };
-
-  const valueLabelFor = (condition) => {
-    if (!OPERATOR_NEEDS_VALUE(condition.operator)) return null;
-    const field = fieldById.get(condition.fieldId);
-    const values = field?.values || [];
-    const selected = values.filter((v) => (condition.valueIds || []).includes(v.id));
-    if (selected.length === 0) return "...";
-    if (selected.length === 1) return selected[0].name;
-    return `${selected.length} ${field?.pluralLabel || "selected"}`;
-  };
-
-  return (
-    <div ref={wrapperRef} className="flex items-center gap-2 flex-wrap relative">
-      {conditions.map((condition) => {
-        const field = fieldById.get(condition.fieldId);
-        const fieldName = field?.name || "Unknown";
-        const FieldIcon = field?.icon || FileText;
-        const operatorLabel = OPERATOR_LABELS[condition.operator] || "is";
-        const showValueSegment = OPERATOR_NEEDS_VALUE(condition.operator);
-        const valueLabel = valueLabelFor(condition);
-        const values = field?.values || [];
-        const q = valueSearch.trim().toLowerCase();
-        const filteredValues = q
-          ? values.filter((v) => v.name.toLowerCase().includes(q))
-          : values;
-        const isOperatorOpen =
-          openMenu?.kind === "operator" && openMenu.conditionId === condition.id;
-        const isValueOpen =
-          openMenu?.kind === "value" && openMenu.conditionId === condition.id;
-
-        return (
-          <div
-            key={condition.id}
-            className="relative inline-flex h-6 items-stretch rounded-md border border-neutral-300 bg-white text-xs"
-          >
-            {/* Field segment */}
-            <div className="flex items-center gap-1.5 px-2 text-neutral-800 border-r border-neutral-300">
-              <FieldIcon size={12} className="text-neutral-500" />
-              <span>{fieldName}</span>
-            </div>
-
-            {/* Operator segment */}
-            <button
-              type="button"
-              onClick={() => {
-                setOpenMenu(
-                  isOperatorOpen
-                    ? null
-                    : { kind: "operator", conditionId: condition.id }
-                );
-              }}
-              className="flex items-center px-2 text-neutral-700 border-r border-neutral-300 hover:bg-neutral-50"
-            >
-              {operatorLabel}
-            </button>
-
-            {/* Value segment */}
-            {showValueSegment && (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenMenu(
-                    isValueOpen ? null : { kind: "value", conditionId: condition.id }
-                  );
-                  setValueSearch("");
-                }}
-                className="flex items-center px-2 text-neutral-800 border-r border-neutral-300 hover:bg-neutral-50 min-w-[32px] text-left"
-              >
-                {valueLabel}
-              </button>
-            )}
-
-            {/* Remove */}
-            <button
-              type="button"
-              onClick={() => removeCondition(condition.id)}
-              className="flex items-center px-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-neutral-700"
-              aria-label={`Remove ${fieldName} condition`}
-            >
-              <X size={12} />
-            </button>
-
-            {/* Operator menu */}
-            {isOperatorOpen && (
-              <div className="absolute left-0 top-full mt-1 min-w-[200px] rounded-lg border border-neutral-200 bg-white p-1 shadow-lg z-[100]">
-                {OPERATOR_OPTIONS.map((op) => (
-                  <button
-                    key={op}
-                    type="button"
-                    onClick={() => selectOperator(condition, op)}
-                    className={`flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-sm hover:bg-neutral-50 ${
-                      condition.operator === op ? "bg-neutral-50 text-neutral-900" : "text-neutral-800"
-                    }`}
-                  >
-                    <span>{OPERATOR_LABELS[op]}</span>
-                    {condition.operator === op && (
-                      <Check size={14} className="text-emerald-500" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Value menu */}
-            {isValueOpen && (
-              <div className="absolute left-0 top-full mt-1 w-[320px] max-h-[420px] flex flex-col rounded-lg border border-neutral-200 bg-white shadow-lg z-[100] overflow-hidden">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-100">
-                  <Search size={14} className="text-neutral-400 shrink-0" />
-                  <input
-                    ref={searchInputRef}
-                    value={valueSearch}
-                    onChange={(e) => setValueSearch(e.target.value)}
-                    placeholder="Search"
-                    className="w-full bg-transparent text-sm text-neutral-800 placeholder-neutral-400 outline-none"
-                  />
-                </div>
-                <div className="flex-1 overflow-auto p-1">
-                  {filteredValues.length === 0 ? (
-                    <div className="px-2.5 py-3 text-sm text-neutral-400">No matches</div>
-                  ) : (
-                    filteredValues.map((value) => {
-                      const checked = (condition.valueIds || []).includes(value.id);
-                      return (
-                        <button
-                          key={value.id}
-                          type="button"
-                          onClick={() => toggleValueId(condition, value.id)}
-                          className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-50"
-                        >
-                          <span
-                            className={`flex h-4 w-4 items-center justify-center rounded border ${
-                              checked
-                                ? "bg-emerald-500 border-emerald-500"
-                                : "border-neutral-300 bg-white"
-                            }`}
-                          >
-                            {checked && <Check size={12} className="text-white" />}
-                          </span>
-                          <span className="truncate">{value.name}</span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => {
-            setOpenMenu((prev) => (prev?.kind === "field" ? null : { kind: "field" }));
-          }}
-          className="inline-flex h-6 items-center gap-1 rounded-md border border-emerald-500 px-2 text-xs font-medium text-emerald-600 hover:bg-emerald-50"
-        >
-          <Plus size={12} />
-          Add condition
-        </button>
-
-        {openMenu?.kind === "field" && (
-          <div className="absolute left-0 top-full mt-1 min-w-[240px] max-h-[360px] overflow-auto rounded-lg border border-neutral-200 bg-white p-1 shadow-lg z-[100]">
-            {availableFields.length === 0 ? (
-              <div className="px-2.5 py-2 text-sm text-neutral-500">No more conditions</div>
-            ) : (
-              availableFields.map((f) => {
-                const Icon = f.icon || FileText;
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => addCondition(f)}
-                    className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-50"
-                  >
-                    <Icon size={14} className="text-neutral-500" />
-                    <span>{f.name}</span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function Row({
   label,
   subcopy,
@@ -1227,29 +745,12 @@ function syncTeamConditionsWithTeams(teams, teamConditions = {}) {
   return next;
 }
 
-function migrateLegacyScopeConditions(initial = {}) {
+function resolveTeamConditions(initial = {}) {
   const teams = normalizeSelections(initial.teams ?? initial.team);
   if (initial.teamConditions && typeof initial.teamConditions === "object") {
     return syncTeamConditionsWithTeams(teams, initial.teamConditions);
   }
-
-  const legacyConditions = Array.isArray(initial.conditions) ? initial.conditions : [];
-  const filterConditions = legacyConditions
-    .filter((condition) => condition.filterType && condition.filterType !== "Status")
-    .map((condition) => createTeamCondition(condition));
-
-  const teamConditions = {};
-  if (teams.length > 0) {
-    teams.forEach((team) => {
-      teamConditions[team] = filterConditions.map((condition) =>
-        createTeamCondition({
-          filterType: condition.filterType,
-          valueIds: [...(condition.valueIds || [])],
-        })
-      );
-    });
-  }
-  return syncTeamConditionsWithTeams(teams, teamConditions);
+  return syncTeamConditionsWithTeams(teams, {});
 }
 
 function getBoardStatusOptions(board) {
@@ -1272,12 +773,6 @@ function resolveScopeStatuses(initial = {}) {
     statuses = initial.statuses.filter(Boolean);
   } else if (typeof initial.status === "string" && initial.status) {
     statuses = [initial.status];
-  } else {
-    const legacyConditions = Array.isArray(initial.conditions) ? initial.conditions : [];
-    const statusCondition = legacyConditions.find((condition) => condition.filterType === "Status");
-    if (Array.isArray(statusCondition?.valueIds)) {
-      statuses = statusCondition.valueIds.filter(Boolean);
-    }
   }
 
   const options = getBoardStatusOptions(view);
@@ -1296,7 +791,7 @@ function resolveScopeFallbackStatus(initial = {}) {
 function createTeamScope(id, initial = {}) {
   const teams = normalizeSelections(initial.teams ?? initial.team);
   const view = initial.view ?? initial.board ?? "";
-  const teamConditions = migrateLegacyScopeConditions(initial);
+  const teamConditions = resolveTeamConditions(initial);
 
   return {
     id,
@@ -2171,158 +1666,9 @@ function RankingPropertyRow({
   );
 }
 
-const GUIDANCE_AGENT_CONTEXT_ITEMS = [
-  "Contact name and type",
-  "Company name and type",
-  "Ticket priority, type, subtype, and item",
-  "Thread SLA status and time to breach",
-  "Ticket summary and conversation history",
-  "Agreement name and type",
-  "Ticket configuration",
-];
-
 const RANKING_SIGNALS_INFO_TITLE = "How scoring works";
 const RANKING_SIGNALS_INFO_BODY =
   "Each signal has a weight you control. Tickets earn points based on how they match each signal – for example, a breaching SLA or an unanswered client reply. The ticket with the highest total score ranks first.";
-
-function GuidanceSection({
-  guidanceTab,
-  onGuidanceTabChange,
-  customGuidance,
-  onCustomGuidanceChange,
-  assignAgentInstructions,
-  onAssignAgentInstructionsChange,
-  onResetAgentInstructions,
-  onUndoLastSaved,
-  canUndoLastSaved = false,
-}) {
-  const guidanceTextareaClassName =
-    "w-full resize-y rounded-md border border-neutral-200 px-3 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 leading-relaxed font-['IBM_Plex_Mono',ui-monospace,monospace]";
-  const customGuidanceTextareaClassName = `${guidanceTextareaClassName} min-h-[140px]`;
-  const agentInstructionsTextareaClassName = `${guidanceTextareaClassName} min-h-[200px]`;
-
-  return (
-    <div className="mb-10">
-      <div className="mb-3">
-        <div className="flex items-center gap-1.5">
-          <h2 className="text-base font-semibold text-neutral-900">Guidance</h2>
-          <Tooltip delayDuration={200}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex rounded p-0.5 text-neutral-400 hover:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                aria-label="What the agent already knows"
-              >
-                <Info size={14} aria-hidden />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              align="start"
-              sideOffset={8}
-              className="w-[300px] max-w-[300px] rounded-lg !border !border-[#E9E9EB] bg-white px-4 py-3 text-neutral-900 shadow-lg"
-            >
-              <div className="text-sm font-medium text-neutral-900">
-                The agent already knows:
-              </div>
-              <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-neutral-500">
-                {GUIDANCE_AGENT_CONTEXT_ITEMS.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </TooltipContent>
-          </Tooltip>
-        </div>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Provide additional instructions and context for the dispatch agent when prioritizing
-          threads.
-        </p>
-      </div>
-
-      <div className="rounded-lg border border-neutral-200 bg-white">
-        <div className="px-5 pt-4">
-          <div
-            className="inline-flex rounded-md border border-neutral-200 bg-neutral-50 p-0.5"
-            role="tablist"
-            aria-label="Guidance mode"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={guidanceTab === "basic"}
-              onClick={() => onGuidanceTabChange("basic")}
-              className={`rounded px-3 py-1 text-sm font-medium transition-colors ${
-                guidanceTab === "basic"
-                  ? "bg-white text-neutral-900 shadow-sm"
-                  : "text-neutral-600 hover:text-neutral-900"
-              }`}
-            >
-              Basic
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={guidanceTab === "advanced"}
-              onClick={() => onGuidanceTabChange("advanced")}
-              className={`inline-flex items-center gap-1.5 rounded px-3 py-1 text-sm font-medium transition-colors ${
-                guidanceTab === "advanced"
-                  ? "bg-white text-neutral-900 shadow-sm"
-                  : "text-neutral-600 hover:text-neutral-900"
-              }`}
-            >
-              <Code2 size={14} className="text-neutral-500" aria-hidden />
-              Advanced
-            </button>
-          </div>
-        </div>
-
-        {guidanceTab === "basic" ? (
-          <div className="px-5 pb-4 pt-3" role="tabpanel">
-            <div className="text-sm font-medium text-neutral-900">Custom guidance</div>
-            <textarea
-              value={customGuidance}
-              onChange={(event) => onCustomGuidanceChange(event.target.value)}
-              placeholder="Enter custom guidance for the dispatch agent (optional)..."
-              className={`mt-2 ${customGuidanceTextareaClassName}`}
-            />
-          </div>
-        ) : (
-          <div className="px-5 pb-4 pt-3" role="tabpanel">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div className="text-sm font-medium text-neutral-900">Agent instructions</div>
-              <div className="flex shrink-0 items-center gap-4">
-                <button
-                  type="button"
-                  onClick={onUndoLastSaved}
-                  disabled={!canUndoLastSaved}
-                  className={`text-sm font-medium ${
-                    canUndoLastSaved
-                      ? "text-neutral-700 hover:text-neutral-900"
-                      : "cursor-not-allowed text-neutral-400"
-                  }`}
-                >
-                  Undo last saved changes
-                </button>
-                <button
-                  type="button"
-                  onClick={onResetAgentInstructions}
-                  className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
-                >
-                  Reset to default
-                </button>
-              </div>
-            </div>
-            <textarea
-              value={assignAgentInstructions}
-              onChange={(event) => onAssignAgentInstructionsChange(event.target.value)}
-              className={agentInstructionsTextareaClassName}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function RankingSignalsSection({ signals, onChangeSignals }) {
   const totalWeight = signals.reduce((sum, signal) => sum + (Number(signal.value) || 0), 0);
@@ -2930,27 +2276,6 @@ function ConfigPage({
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   });
 
-  const [guidanceTab, setGuidanceTab] = useState("basic");
-  const [customGuidance, setCustomGuidance] = useState(initialAgent?.guidance ?? "");
-  const initialAssignAgentInstructions =
-    initialAgent?.assignAgentInstructions ?? DEFAULT_ASSIGN_AGENT_INSTRUCTIONS;
-  const [assignAgentInstructions, setAssignAgentInstructions] = useState(
-    initialAssignAgentInstructions
-  );
-  const [lastSavedAssignAgentInstructions, setLastSavedAssignAgentInstructions] =
-    useState(initialAssignAgentInstructions);
-  const canUndoAssignAgentInstructions =
-    assignAgentInstructions !== lastSavedAssignAgentInstructions;
-  const assignModeInstructions = useMemo(() => {
-    const parts = [assignAgentInstructions.trim(), customGuidance.trim()].filter(Boolean);
-    return parts.join("\n\n");
-  }, [assignAgentInstructions, customGuidance]);
-
-  // --- Agent autonomy (Assign + Assign+Schedule)
-  const [limitWorkload, setLimitWorkload] = useState(false);
-  const [workloadPct, setWorkloadPct] = useState(50);
-
-  // --- Thread scoring (Assign + Assign+Schedule)
   const [rankingSignals, setRankingSignals] = useState(() =>
     normalizeRankingSignals(initialAgent?.rankingSignals)
   );
@@ -2999,32 +2324,12 @@ function ConfigPage({
       };
     }
 
-    // Legacy: FilterBar-style
-    if (condition?.filterAttribute) {
-      const attr = condition.filterAttribute;
-      const matchedField =
-        routeFieldOptions.find((f) => f.id === attr.id || f.name === attr.name) || routeFieldOptions[0];
-      const ids = (condition.filterValue || []).map((v) => v.id).filter(Boolean);
-      return {
-        id: condition.id || newConditionId(),
-        version: 2,
-        fieldId: matchedField.id,
-        operator: "is",
-        valueIds: ids,
-      };
-    }
-
-    // Legacy: { field, value }
-    const fieldName = condition?.field || "";
-    const matchedField =
-      routeFieldOptions.find((f) => f.name === fieldName) || routeFieldOptions[0];
-    const valueId = condition?.value ? String(condition.value) : null;
     return {
       id: condition?.id || newConditionId(),
       version: 2,
-      fieldId: matchedField.id,
+      fieldId: routeFieldOptions[0]?.id ?? "",
       operator: "is",
-      valueIds: valueId ? [valueId] : [],
+      valueIds: [],
     };
   };
 
@@ -3042,8 +2347,6 @@ function ConfigPage({
       ? initialAgent.destinations.map((b, i) => createRule(i + 1, b))
       : [createRule(1)]
   );
-  const [keepOnBoardPrompt, setKeepOnBoardPrompt] = useState("");
-
   const addRule = () =>
     setRules((r) => [...r, createRule(Date.now())]);
   const updateRule = (id, patch) =>
@@ -3132,7 +2435,6 @@ function ConfigPage({
     const primaryScope = teamScopes[0];
     const publishedAt = new Date();
     setLastPublishedAt(publishedAt);
-    setLastSavedAssignAgentInstructions(assignAgentInstructions);
     onSave({
       name: agentDisplayName.trim(),
       avatarId,
@@ -3159,12 +2461,10 @@ function ConfigPage({
           : primaryScope?.fallbackStatus ?? "Escalation",
       destinations: isRoute ? rules.map((r) => r.board).filter(Boolean) : [],
       routeRules: isRoute ? rules : undefined,
-      guidance: isRoute ? undefined : customGuidance,
-      assignAgentInstructions: isRoute ? undefined : assignAgentInstructions,
       agentInstructions: isRoute
         ? undefined
         : dispatchMode === "Auto-assign"
-          ? assignModeInstructions
+          ? DEFAULT_ASSIGN_AGENT_INSTRUCTIONS
           : agentInstructions,
       rankingSignals: isRoute ? undefined : rankingSignals,
       statuses: isRoute ? statuses : primaryScope?.statuses ?? [],
@@ -3492,20 +2792,6 @@ function ConfigPage({
                         {error}
                       </div>
                     )}
-                    {/* When... + filter conditions — temporarily hidden, may be reintroduced later
-                    <div className="px-4 pt-3 pb-1">
-                      <div className="flex items-center gap-3 flex-wrap mb-2">
-                        <span className="text-sm text-neutral-800">When...</span>
-                        <RouteRuleConditionsEditor
-                          fields={routeFieldOptions}
-                          conditions={rule.conditions || []}
-                          onChange={(nextConditions) =>
-                            updateRule(rule.id, { conditions: nextConditions })
-                          }
-                        />
-                      </div>
-                    </div>
-                    */}
                     <div className="p-1">
                       <textarea
                         value={rule.prompt}
@@ -3656,72 +2942,12 @@ function ConfigPage({
                 </div>
               </Row>
             </Section>
-            {/* Guidance — hidden for prototype; set to true to show */}
-            {false && (
-              <GuidanceSection
-                guidanceTab={guidanceTab}
-                onGuidanceTabChange={setGuidanceTab}
-                customGuidance={customGuidance}
-                onCustomGuidanceChange={setCustomGuidance}
-                assignAgentInstructions={assignAgentInstructions}
-                onAssignAgentInstructionsChange={setAssignAgentInstructions}
-                onResetAgentInstructions={() =>
-                  setAssignAgentInstructions(DEFAULT_ASSIGN_AGENT_INSTRUCTIONS)
-                }
-                canUndoLastSaved={canUndoAssignAgentInstructions}
-                onUndoLastSaved={() =>
-                  setAssignAgentInstructions(lastSavedAssignAgentInstructions)
-                }
-              />
-            )}
           </>
         )}
 
         {/* Thread scoring — Self-serve only */}
         {!isRoute && dispatchMode === "Self-serve" && (
           <RankingSignalsSection signals={rankingSignals} onChangeSignals={setRankingSignals} />
-        )}
-
-        {/* Auto-assign limit — hidden for prototype; set to true to show */}
-        {false && (
-          <Section
-            title="Auto-assign limit"
-            subcopy="When enabled, you can set assignment limits for threads."
-          >
-              <Row
-                label="Limit auto-assignment"
-                subcopy="When this is off, all threads in the status(es) you specified will be automatically assigned."
-                noBorder={!limitWorkload}
-                align="center"
-              >
-                <Switch
-                  checked={limitWorkload}
-                  onCheckedChange={setLimitWorkload}
-                  size="sm"
-                />
-              </Row>
-              {limitWorkload && (
-                <Row
-                  label="Percentage of tickets handled"
-                  subcopy="The agent will automatically dispatch this percentage of new tickets."
-                  noBorder
-                >
-                  <div className="flex items-center gap-3">
-                    <Slider
-                      min={10}
-                      max={100}
-                      step={1}
-                      value={[workloadPct]}
-                      onValueChange={([v]) => setWorkloadPct(v)}
-                      className="w-48"
-                    />
-                    <span className="text-sm text-neutral-700 tabular-nums min-w-[3ch] text-right">
-                      {workloadPct}%
-                    </span>
-                  </div>
-                </Row>
-              )}
-          </Section>
         )}
 
         {/* Save / Cancel */}
@@ -3789,7 +3015,9 @@ function ConfigPage({
               <TestAgentPanel
                 configuredTeams={teams}
                 agentInstructions={
-                  dispatchMode === "Auto-assign" ? assignModeInstructions : agentInstructions
+                  dispatchMode === "Auto-assign"
+                    ? DEFAULT_ASSIGN_AGENT_INSTRUCTIONS
+                    : agentInstructions
                 }
                 rankingSignals={rankingSignals}
                 outputMode={

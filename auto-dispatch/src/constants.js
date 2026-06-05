@@ -48,6 +48,7 @@ export const DISPATCH_STATUS_OPTIONS = [
 /** Status options available per dispatch board (scope cards). */
 export const BOARD_DISPATCH_STATUSES = {
   "Help Desk": DISPATCH_STATUS_OPTIONS,
+  "Quick Fix": DISPATCH_STATUS_OPTIONS,
   Network: ["New", "In Progress", "On Hold", "Escalation", "Escalate", "Triage", "Resolved"],
   Projects: ["New", "Planning", "In Progress", "On Hold", "Escalate", "Triage", "Completed"],
   Voice: ["New", "Ringing", "In Progress", "On Hold", "Escalate", "Triage", "Resolved"],

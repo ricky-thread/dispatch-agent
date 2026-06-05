@@ -86,6 +86,7 @@ import {
   ROUTE_CONDITION_FIELDS,
   ROUTE_CONDITION_VALUES,
 } from "./constants";
+import TeamIcon, { TeamLabel } from "./components/TeamIcon";
 
 /** Status menus: default dropdown height + 200px */
 const STATUS_MENU_MAX_HEIGHT = "min(46.5rem, calc(100vh - 6rem))";
@@ -123,7 +124,19 @@ function formatLastSaved(date) {
   });
   return `Last saved on ${datePart} at ${timePart}`;
 }
-const SCOPE_BOARD_OPTIONS = ["Help Desk", "Network", "Projects", "Voice"];
+const SCOPE_BOARD_OPTIONS = ["Help Desk", "Quick Fix", "Network", "Projects", "Voice"];
+
+function scopeBoardStatusLabel(board) {
+  return `{${board}} dispatch status`;
+}
+
+function ScopeNestedGroup({ children, className = "" }) {
+  return (
+    <div className={`mt-4 space-y-4 border-l border-neutral-200 pl-4 ${className}`.trim()}>
+      {children}
+    </div>
+  );
+}
 const SCOPE_FILTER_METADATA = {
   "Company type": {
     icon: Building2,
@@ -718,33 +731,10 @@ function createTeamCondition(initial = {}) {
   };
 }
 
-function getScopeFilterTypes(scope) {
-  const types = new Set();
-  const teams = normalizeSelections(scope.teams ?? scope.team);
-  teams.forEach((team) => {
-    (scope.teamConditions?.[team] || []).forEach((condition) => {
-      types.add(condition.filterType);
-    });
-  });
-  if (types.size === 0 && Array.isArray(scope.conditions)) {
-    scope.conditions.forEach((condition) => {
-      if (condition.filterType && condition.filterType !== "Status") {
-        types.add(condition.filterType);
-      }
-    });
-  }
-  return [...types];
-}
-
 function syncTeamConditionsWithTeams(teams, teamConditions = {}) {
-  const filterTypes = getScopeFilterTypes({ teams, teamConditions, conditions: [] });
   const next = {};
   teams.forEach((team) => {
-    const existing = teamConditions[team] || [];
-    const byType = new Map(existing.map((condition) => [condition.filterType, condition]));
-    next[team] = filterTypes.map(
-      (filterType) => byType.get(filterType) ?? createTeamCondition({ filterType, valueIds: [] })
-    );
+    next[team] = teamConditions[team] || [];
   });
   return next;
 }
@@ -796,11 +786,29 @@ function getBoardsFallbackStatusOptions(boards) {
   return options;
 }
 
+function flattenBoardStatuses(boardStatuses = {}) {
+  const seen = new Set();
+  const result = [];
+  Object.values(boardStatuses).forEach((value) => {
+    normalizeSelections(value).forEach((status) => {
+      if (!seen.has(status)) {
+        seen.add(status);
+        result.push(status);
+      }
+    });
+  });
+  return result;
+}
+
 function resolveScopeStatuses(initial = {}) {
   const views = normalizeSelections(
     initial.views ?? initial.view ?? initial.boards ?? initial.board
   );
   if (!views.length) return [];
+
+  if (initial.boardStatuses && typeof initial.boardStatuses === "object") {
+    return flattenBoardStatuses(initial.boardStatuses);
+  }
 
   let statuses = [];
   if (Array.isArray(initial.statuses)) {
@@ -811,6 +819,46 @@ function resolveScopeStatuses(initial = {}) {
 
   const options = new Set(getBoardsStatusOptions(views));
   return statuses.filter((status) => options.has(status));
+}
+
+function resolveBoardStatuses(initial = {}) {
+  const views = normalizeSelections(
+    initial.views ?? initial.view ?? initial.boards ?? initial.board
+  );
+  const next = {};
+
+  if (initial.boardStatuses && typeof initial.boardStatuses === "object") {
+    views.forEach((board) => {
+      const options = new Set(getBoardStatusOptions(board));
+      const current = normalizeSelections(initial.boardStatuses[board]);
+      next[board] = current.filter((status) => options.has(status));
+    });
+    return next;
+  }
+
+  const legacyStatuses = resolveScopeStatuses(initial);
+  views.forEach((board, index) => {
+    const options = new Set(getBoardStatusOptions(board));
+    const legacy = legacyStatuses[index] ?? legacyStatuses[0] ?? "";
+    next[board] = legacy && options.has(legacy) ? [legacy] : [];
+  });
+  return next;
+}
+
+function syncBoardStatusesWithViews(views, boardStatuses = {}) {
+  const next = {};
+  views.forEach((board) => {
+    const options = new Set(getBoardStatusOptions(board));
+    const current = normalizeSelections(boardStatuses[board]);
+    const valid = current.filter((status) => options.has(status));
+    next[board] =
+      valid.length > 0
+        ? valid
+        : options.has("Needs dispatch")
+          ? ["Needs dispatch"]
+          : [];
+  });
+  return next;
 }
 
 function resolveScopeFallbackStatus(initial = {}) {
@@ -836,53 +884,11 @@ function createTeamScope(id, initial = {}) {
     teams,
     views,
     teamConditions,
+    boardStatuses: resolveBoardStatuses({ ...initial, views }),
     statuses: resolveScopeStatuses({ ...initial, views }),
     fallbackStatus: resolveScopeFallbackStatus({ ...initial, views }),
     skipFlowAssignedTickets: initial.skipFlowAssignedTickets ?? false,
   };
-}
-
-function getDisabledValuesForTeamField(scope, team, filterType) {
-  const disabled = new Set();
-  const teams = normalizeSelections(scope.teams ?? scope.team);
-  teams.forEach((otherTeam) => {
-    if (otherTeam === team) return;
-    (scope.teamConditions?.[otherTeam] || [])
-      .filter((condition) => condition.filterType === filterType)
-      .forEach((condition) => {
-        (condition.valueIds || []).forEach((value) => disabled.add(value));
-      });
-  });
-  return disabled;
-}
-
-/** Map of filterType → values selected on more than one team in the same scope. */
-function getOverlappingValuesByFilterType(scope) {
-  const overlaps = new Map();
-  const teams = normalizeSelections(scope.teams ?? scope.team);
-  if (teams.length < 2) return overlaps;
-
-  const filterTypes = getScopeFilterTypes(scope);
-  for (const filterType of filterTypes) {
-    const seenValues = new Set();
-    const filterOverlaps = new Set();
-    for (const team of teams) {
-      const condition = (scope.teamConditions?.[team] || []).find(
-        (entry) => entry.filterType === filterType
-      );
-      if (!condition) continue;
-      for (const value of condition.valueIds || []) {
-        if (seenValues.has(value)) filterOverlaps.add(value);
-        seenValues.add(value);
-      }
-    }
-    if (filterOverlaps.size > 0) overlaps.set(filterType, filterOverlaps);
-  }
-  return overlaps;
-}
-
-function hasOverlappingTeamConditions(scope) {
-  return getOverlappingValuesByFilterType(scope).size > 0;
 }
 
 function isMultiTeamScopeValid(scope) {
@@ -890,28 +896,7 @@ function isMultiTeamScopeValid(scope) {
   if (teams.length < 2) return true;
 
   const allConditions = teams.flatMap((team) => scope.teamConditions?.[team] || []);
-  if (allConditions.length === 0) return false;
-  if (allConditions.some((condition) => !(condition.valueIds || []).length)) return false;
-
-  return !hasOverlappingTeamConditions(scope);
-}
-
-function addMirroredCondition(teamConditions, teams, filterType) {
-  const next = { ...teamConditions };
-  teams.forEach((team) => {
-    const existing = next[team] || [];
-    if (existing.some((condition) => condition.filterType === filterType)) return;
-    next[team] = [...existing, createTeamCondition({ filterType, valueIds: [] })];
-  });
-  return next;
-}
-
-function removeMirroredCondition(teamConditions, teams, filterType) {
-  const next = { ...teamConditions };
-  teams.forEach((team) => {
-    next[team] = (next[team] || []).filter((condition) => condition.filterType !== filterType);
-  });
-  return next;
+  return !allConditions.some((condition) => !(condition.valueIds || []).length);
 }
 
 function updateTeamConditionInScope(teamConditions, team, conditionId, patch) {
@@ -936,7 +921,14 @@ function ScopeCardHeaderLabel({ scope }) {
   return (
     <>
       {hasTeams ? (
-        <span className="font-medium text-neutral-900">{teams.join(", ")}</span>
+        <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 font-medium text-neutral-900">
+          {teams.map((team, index) => (
+            <span key={team} className="inline-flex min-w-0 items-center">
+              {index > 0 ? <span className="mr-1 text-[#605F68]">,</span> : null}
+              <TeamLabel team={team} />
+            </span>
+          ))}
+        </span>
       ) : (
         <span className="font-normal text-[#605F68]">Select team</span>
       )}
@@ -948,51 +940,37 @@ function ScopeCardHeaderLabel({ scope }) {
   );
 }
 
-function MutualExclusivityNote() {
-  return (
-    <p className="mt-3 flex items-start gap-1.5 text-sm leading-snug text-sky-700">
-      <Info size={14} className="mt-0.5 shrink-0 text-sky-600" strokeWidth={2} aria-hidden />
-      <span>Conditions set for each team must be mutually exclusive.</span>
-    </p>
-  );
-}
-
 function ScopeTeamConditionsEditor({
-  scope,
   team,
-  teams,
   conditions = [],
   teamConditions,
   onUpdateTeamConditions,
   openConditionMenu,
   setOpenConditionMenu,
 }) {
-  const activeFilterTypes = new Set(getScopeFilterTypes({ teams, teamConditions }));
+  const activeFilterTypes = new Set(conditions.map((condition) => condition.filterType));
   const availableFilterOptions = SCOPE_FILTER_OPTIONS.filter(
     (filterType) => !activeFilterTypes.has(filterType)
   );
-  const isMultiTeam = teams.length >= 2;
-  const overlappingValuesByFilterType = useMemo(
-    () => getOverlappingValuesByFilterType(scope),
-    [scope]
-  );
-  const disabledValuesFor = (filterType) =>
-    isMultiTeam ? getDisabledValuesForTeamField(scope, team, filterType) : new Set();
 
   const handleAddFilter = (filterType) => {
-    onUpdateTeamConditions(addMirroredCondition(teamConditions, teams, filterType));
+    const existing = teamConditions[team] || [];
+    if (existing.some((condition) => condition.filterType === filterType)) return;
+    onUpdateTeamConditions({
+      ...teamConditions,
+      [team]: [...existing, createTeamCondition({ filterType, valueIds: [] })],
+    });
     setOpenConditionMenu(null);
   };
 
   const handleRemoveCondition = (condition) => {
-    onUpdateTeamConditions(
-      removeMirroredCondition(teamConditions, teams, condition.filterType)
-    );
+    onUpdateTeamConditions({
+      ...teamConditions,
+      [team]: (teamConditions[team] || []).filter((entry) => entry.id !== condition.id),
+    });
   };
 
   const handleToggleValue = (condition, value) => {
-    const disabled = disabledValuesFor(condition.filterType);
-    if (disabled.has(value) && !(condition.valueIds || []).includes(value)) return;
     const current = condition.valueIds || [];
     const next = current.includes(value)
       ? current.filter((entry) => entry !== value)
@@ -1018,13 +996,7 @@ function ScopeTeamConditionsEditor({
         const filterMeta = SCOPE_FILTER_METADATA[condition.filterType];
         const FilterIcon = filterMeta?.icon || FileText;
         const valueOptions = filterMeta?.values || [];
-        const disabledValues = disabledValuesFor(condition.filterType);
-        const overlappingValues =
-          overlappingValuesByFilterType.get(condition.filterType) ?? new Set();
         const selectedValues = condition.valueIds || [];
-        const hasOverlapOnCondition = selectedValues.some((value) =>
-          overlappingValues.has(value)
-        );
         const valueMenuOpen =
           openConditionMenu?.kind === "value" &&
           menuTeam === team &&
@@ -1034,26 +1006,13 @@ function ScopeTeamConditionsEditor({
         return (
           <div
             key={condition.id}
-            className={`relative inline-flex h-6 items-center rounded-md border text-[12px] ${
-              hasOverlapOnCondition
-                ? "border-red-300 bg-red-50/70 text-red-900"
-                : "border-neutral-300 bg-white text-neutral-800"
-            }`}
-            aria-invalid={hasOverlapOnCondition || undefined}
+            className="relative inline-flex h-6 items-center rounded-md border border-neutral-300 bg-white text-[12px] text-neutral-800"
           >
-            <span
-              className={`inline-flex items-center gap-1 border-r px-2 py-[3px] ${
-                hasOverlapOnCondition ? "border-red-200" : "border-neutral-300"
-              }`}
-            >
+            <span className="inline-flex items-center gap-1 border-r border-neutral-300 px-2 py-[3px]">
               <FilterIcon size={12} className="text-neutral-500" />
               <span>{condition.filterType}</span>
             </span>
-            <span
-              className={`border-r px-2 py-[3px] text-neutral-700 ${
-                hasOverlapOnCondition ? "border-red-200" : "border-neutral-300"
-              }`}
-            >
+            <span className="border-r border-neutral-300 px-2 py-[3px] text-neutral-700">
               is
             </span>
             <button
@@ -1068,16 +1027,9 @@ function ScopeTeamConditionsEditor({
                     : { kind: "value", team, conditionId: condition.id }
                 )
               }
-              className={`max-w-[230px] truncate border-r px-2 py-[3px] text-left transition-colors hover:bg-neutral-50/80 ${
-                hasOverlapOnCondition
-                  ? "border-red-200 text-red-700"
-                  : "border-neutral-300 text-neutral-900"
-              } ${hasEmptyValue ? "text-neutral-400" : ""}`}
-              title={
-                hasOverlapOnCondition
-                  ? "This value is also selected for another team"
-                  : undefined
-              }
+              className={`max-w-[230px] truncate border-r border-neutral-300 px-2 py-[3px] text-left text-neutral-900 transition-colors hover:bg-neutral-50/80 ${
+                hasEmptyValue ? "text-neutral-400" : ""
+              }`}
             >
               {conditionValueLabel(condition)}
             </button>
@@ -1097,34 +1049,18 @@ function ScopeTeamConditionsEditor({
               >
                 {valueOptions.map((value) => {
                   const checked = selectedValues.includes(value);
-                  const optionDisabled = disabledValues.has(value) && !checked;
-                  const isOverlapping = checked && overlappingValues.has(value);
                   return (
                     <button
                       key={value}
                       type="button"
-                      disabled={optionDisabled}
                       onClick={() => handleToggleValue(condition, value)}
-                      className={`flex max-w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] ${
-                        optionDisabled
-                          ? "cursor-not-allowed text-neutral-300"
-                          : isOverlapping
-                            ? "bg-red-50 text-red-700 hover:bg-red-100"
-                            : "text-neutral-900 hover:bg-neutral-50"
-                      }`}
-                      title={
-                        isOverlapping
-                          ? "Also selected for another team — remove from one team"
-                          : undefined
-                      }
+                      className="flex max-w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] text-neutral-900 hover:bg-neutral-50"
                     >
                       <span
                         className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
                           checked
                             ? "border-emerald-500 bg-emerald-500"
-                            : optionDisabled
-                              ? "border-neutral-200 bg-neutral-50"
-                              : "border-neutral-300 bg-white"
+                            : "border-neutral-300 bg-white"
                         }`}
                       >
                         {checked ? (
@@ -1187,19 +1123,15 @@ function ScopeTeamConditionsEditor({
 
 function AgentScopeTeamCard({
   scope,
-  excludedTeams = [],
+  disabledTeamClaims = {},
   showFallbackStatus = false,
+  onRemove,
   onUpdate,
 }) {
   const [openConditionMenu, setOpenConditionMenu] = useState(null);
   const teams = normalizeSelections(scope.teams ?? scope.team);
   const teamConditions = scope.teamConditions || {};
-  const isMultiTeam = teams.length >= 2;
-
-  const dispatchToTeamOptions = useMemo(() => {
-    const excluded = new Set(excludedTeams);
-    return TEAMS.filter((team) => teams.includes(team) || !excluded.has(team));
-  }, [excludedTeams, teams]);
+  const boardStatuses = scope.boardStatuses ?? {};
 
   const handleTeamsChange = (nextTeams) => {
     onUpdate({
@@ -1214,29 +1146,35 @@ function AgentScopeTeamCard({
 
   const views = getScopeViews(scope);
   const hasBoard = views.length > 0;
-  const statusOptions = getBoardsStatusOptions(views);
   const fallbackStatusOptions = getBoardsFallbackStatusOptions(views);
 
   const handleBoardsChange = (nextViews) => {
     const patch = { views: nextViews };
     if (!nextViews.length) {
+      patch.boardStatuses = {};
       patch.statuses = [];
       patch.fallbackStatus = "";
       onUpdate(patch);
       return;
     }
 
-    const nextStatusOptions = new Set(getBoardsStatusOptions(nextViews));
+    const nextBoardStatuses = syncBoardStatusesWithViews(nextViews, boardStatuses);
+    patch.boardStatuses = nextBoardStatuses;
+    patch.statuses = flattenBoardStatuses(nextBoardStatuses);
+
     const nextFallbackOptions = new Set(getBoardsFallbackStatusOptions(nextViews));
-    const currentStatuses = scope.statuses ?? [];
-    const validStatuses = currentStatuses.filter((status) => nextStatusOptions.has(status));
-    if (validStatuses.length !== currentStatuses.length) {
-      patch.statuses = validStatuses;
-    }
     if (scope.fallbackStatus && !nextFallbackOptions.has(scope.fallbackStatus)) {
       patch.fallbackStatus = "";
     }
     onUpdate(patch);
+  };
+
+  const handleBoardStatusChange = (board, statuses) => {
+    const nextBoardStatuses = { ...boardStatuses, [board]: statuses };
+    onUpdate({
+      boardStatuses: nextBoardStatuses,
+      statuses: flattenBoardStatuses(nextBoardStatuses),
+    });
   };
 
   useEffect(() => {
@@ -1262,9 +1200,7 @@ function AgentScopeTeamCard({
 
   const renderConditionsForTeam = (team) => (
     <ScopeTeamConditionsEditor
-      scope={scope}
       team={team}
-      teams={teams}
       conditions={teamConditions[team] || []}
       teamConditions={teamConditions}
       onUpdateTeamConditions={handleTeamConditionsChange}
@@ -1275,38 +1211,29 @@ function AgentScopeTeamCard({
 
   return (
     <div className="bg-white border border-neutral-200 rounded-lg overflow-visible">
-      <div className="px-5 py-3.5 border-b border-neutral-100">
-        <span className="min-w-0 truncate text-sm">
+      <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-3.5">
+        <span className="min-w-0 flex-1 truncate text-sm">
           <ScopeCardHeaderLabel scope={scope} />
         </span>
+        {onRemove ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="shrink-0 rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-600"
+            aria-label="Remove dispatch scope"
+          >
+            <X size={14} />
+          </button>
+        ) : null}
       </div>
 
       <div>
-          <Row
-            label="Dispatch to"
-            subcopy="The Inbox Team threads will be dispatched to"
-          >
-            <MultiSelect
-              values={teams}
-              options={dispatchToTeamOptions}
-              onChange={handleTeamsChange}
-              placeholder="Select Inbox team"
-              summaryLabel={
-                teams.length === 0
-                  ? undefined
-                  : teams.length === 1
-                    ? teams[0]
-                    : `${teams.length} teams selected`
-              }
-              dropdownClassName="w-[280px]"
-            />
-          </Row>
-          <div className={`px-5 py-4 ${hasBoard ? "border-b border-neutral-100" : ""}`}>
+          <div className="border-b-[1px] border-solid border-neutral-100 px-5 py-4">
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-neutral-900">Dispatch from</div>
                 <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                  The Board to dispatch threads from
+                  Select the board to dispatch threads from. Add conditions to narrow the scope.
                 </p>
               </div>
               <MultiSelect
@@ -1319,73 +1246,127 @@ function AgentScopeTeamCard({
                     ? undefined
                     : views.length === 1
                       ? views[0]
-                      : `${views.length} boards selected`
+                      : `${views.length} selected`
                 }
                 dropdownClassName="w-[220px]"
               />
             </div>
-            <div className="mt-3 min-w-0">
-              {teams.length === 0 ? null : isMultiTeam ? (
-                <div className="space-y-3">
-                  {teams.map((team) => (
-                    <div key={team} className="space-y-2">
-                      <div className="text-sm font-medium text-neutral-900">{team}:</div>
-                      {renderConditionsForTeam(team)}
+            {hasBoard ? (
+              <ScopeNestedGroup>
+                {views.map((board) => {
+                  const selectedBoardStatuses = normalizeSelections(boardStatuses[board]);
+                  return (
+                    <div key={board} className="flex items-start justify-between gap-6">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-neutral-900">
+                          {scopeBoardStatusLabel(board)}
+                        </div>
+                        <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                          Select status(es) the dispatcher should focus on in this board
+                        </p>
+                      </div>
+                      <MultiSelect
+                        values={selectedBoardStatuses}
+                        options={getBoardStatusOptions(board)}
+                        onChange={(statuses) => handleBoardStatusChange(board, statuses)}
+                        placeholder="Select status"
+                        searchable
+                        searchPlaceholder="Search statuses..."
+                        summaryLabel={
+                          selectedBoardStatuses.length === 0
+                            ? undefined
+                            : selectedBoardStatuses.length === 1
+                              ? selectedBoardStatuses[0]
+                              : `${selectedBoardStatuses.length} selected`
+                        }
+                        dropdownClassName="w-[220px]"
+                      />
                     </div>
-                  ))}
-                  {hasOverlappingTeamConditions(scope) ? <MutualExclusivityNote /> : null}
-                </div>
-              ) : (
-                renderConditionsForTeam(teams[0])
-              )}
-            </div>
+                  );
+                })}
+              </ScopeNestedGroup>
+            ) : null}
           </div>
-          {hasBoard ? (
-            <>
-              <Row
-                label="Status"
-                subcopy="Select status(es) the agent should focus on"
-                noBorder={!showFallbackStatus}
-              >
-                <MultiSelect
-                  values={scope.statuses ?? []}
-                  options={statusOptions}
-                  onChange={(statuses) => onUpdate({ statuses })}
-                  placeholder="Select status"
-                  searchable
-                  searchPlaceholder="Search statuses..."
-                  dropdownClassName="w-[280px]"
-                />
-              </Row>
-              {showFallbackStatus ? (
-                <Row
-                  label="Fallback status"
-                  subcopy={
-                    <>
-                      Status set when no one is available.{" "}
-                      <a
-                        href="#"
-                        className="inline-flex items-center gap-0.5 font-medium text-emerald-600 hover:text-emerald-700"
-                        onClick={(event) => event.preventDefault()}
-                      >
-                        Set up a Flow
-                        <ArrowUpRight size={12} strokeWidth={2.25} aria-hidden />
-                      </a>{" "}
-                      to handle this.
-                    </>
-                  }
-                  noBorder
-                >
-                  <Select
-                    value={scope.fallbackStatus ?? ""}
-                    options={fallbackStatusOptions}
-                    onChange={(fallbackStatus) => onUpdate({ fallbackStatus })}
-                    placeholder="Select status"
-                    dropdownClassName="w-[220px]"
-                  />
-                </Row>
-              ) : null}
-            </>
+
+          <div
+            className={`px-5 py-4 ${
+              showFallbackStatus && hasBoard ? "border-b border-neutral-100" : ""
+            }`}
+          >
+            <div className="flex items-start justify-between gap-6">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-neutral-900">Dispatch to</div>
+                <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                  The Inbox Team threads will be dispatched to
+                </p>
+              </div>
+              <MultiSelect
+                values={teams}
+                options={TEAMS}
+                onChange={handleTeamsChange}
+                placeholder="Select Inbox team"
+                renderOptionLabel={(team) => (
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <TeamIcon team={team} />
+                    <span className="truncate">{team}</span>
+                  </span>
+                )}
+                summaryLabel={
+                  teams.length === 0
+                    ? undefined
+                    : teams.length === 1
+                      ? teams[0]
+                      : `${teams.length} selected`
+                }
+                dropdownClassName="w-[220px]"
+                disabledClaims={disabledTeamClaims}
+              />
+            </div>
+
+            {teams.length > 0 ? (
+              <ScopeNestedGroup>
+                {teams.map((team) => (
+                  <div key={team} className="space-y-2">
+                    <div className="text-sm font-medium text-neutral-900">
+                      <span className="inline-flex min-w-0 items-center gap-1.5">
+                        <TeamIcon team={team} />
+                        <span>{team}:</span>
+                      </span>
+                    </div>
+                    {renderConditionsForTeam(team)}
+                  </div>
+                ))}
+              </ScopeNestedGroup>
+            ) : null}
+          </div>
+
+          {showFallbackStatus && hasBoard ? (
+            <Row
+              label="Fallback status"
+              subcopy={
+                <>
+                  Status set when no one is available.{" "}
+                  <a
+                    href="#"
+                    className="inline-flex items-center gap-0.5 font-medium text-emerald-600 hover:text-emerald-700"
+                    onClick={(event) => event.preventDefault()}
+                  >
+                    Set up a Flow
+                    <ArrowUpRight size={12} strokeWidth={2.25} aria-hidden />
+                  </a>{" "}
+                  to handle this.
+                </>
+              }
+              noBorder
+            >
+              <Select
+                value={scope.fallbackStatus ?? ""}
+                options={fallbackStatusOptions}
+                onChange={(fallbackStatus) => onUpdate({ fallbackStatus })}
+                placeholder="Select status"
+                dropdownClassName="w-[220px]"
+              />
+            </Row>
           ) : null}
         </div>
     </div>
@@ -2424,8 +2405,8 @@ function ConfigPage({
   // ---------------------------------------------------------------------------
   // Conflict detection
   //
-  // With the 1 team = 1 board assumption, team uniqueness covers board uniqueness.
-  // Relax this rule when we later support shared boards via company/tsi filters.
+  // Teams are exclusive per dispatch scope and per agent. Boards can overlap
+  // across scopes when company/tsi filters differentiate intake.
   // ---------------------------------------------------------------------------
   const otherAgents = agents.filter((a) => a.id !== editingAgentId);
   const assignmentAgents = otherAgents.filter(
@@ -2440,6 +2421,17 @@ function ConfigPage({
   });
 
   const boardClaimedByAgent = Object.fromEntries(claimedBoards);
+
+  const claimedTeams = new Map();
+  assignmentAgents.forEach((agent) => {
+    const agentTeams = Array.isArray(agent.teamScopes)
+      ? agent.teamScopes.flatMap((scope) =>
+          normalizeSelections(scope.teams ?? scope.team)
+        )
+      : normalizeSelections(agent.teams ?? agent.team);
+    agentTeams.forEach((team) => claimedTeams.set(team, agent.name || "another agent"));
+  });
+  const teamClaimedByAgent = Object.fromEntries(claimedTeams);
 
   const ruleErrors = {};
   if (isRoute) {
@@ -2460,15 +2452,24 @@ function ConfigPage({
     () => teamScopes.flatMap((scope) => getScopeViews(scope)),
     [teamScopes]
   );
-  const excludedTeamsByScopeId = useMemo(() => {
-    const excludedByScopeId = {};
+  const disabledTeamClaimsByScopeId = useMemo(() => {
+    const claimsByScopeId = {};
     teamScopes.forEach((scope) => {
-      excludedByScopeId[scope.id] = teamScopes
+      const claims = { ...teamClaimedByAgent };
+      teamScopes
         .filter((otherScope) => otherScope.id !== scope.id)
-        .flatMap((otherScope) => normalizeSelections(otherScope.teams ?? otherScope.team));
+        .forEach((otherScope) => {
+          normalizeSelections(otherScope.teams ?? otherScope.team).forEach((team) => {
+            claims[team] = "another dispatch scope";
+          });
+        });
+      claimsByScopeId[scope.id] = claims;
     });
-    return excludedByScopeId;
-  }, [teamScopes]);
+    return claimsByScopeId;
+  }, [teamScopes, teamClaimedByAgent]);
+
+  const removeTeamScope = (id) =>
+    setTeamScopes((prev) => prev.filter((scope) => scope.id !== id));
 
   const hasErrors = Object.keys(ruleErrors).length > 0;
   const missingRequired =
@@ -2522,7 +2523,9 @@ function ConfigPage({
           ? DEFAULT_ASSIGN_AGENT_INSTRUCTIONS
           : agentInstructions,
       rankingSignals: isRoute ? undefined : rankingSignals,
-      statuses: isRoute ? statuses : primaryScope?.statuses ?? [],
+      statuses: isRoute
+        ? statuses
+        : flattenBoardStatuses(primaryScope?.boardStatuses ?? {}),
       statusMode: isRoute ? statusMode : "Include only",
       active,
       lastPublishedAt: publishedAt.toISOString(),
@@ -2748,15 +2751,20 @@ function ConfigPage({
                   : "Use multiple sections when teams share the same dispatch logic."}
               </p>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               {teamScopes.map((scope) => (
-                <AgentScopeTeamCard
-                  key={scope.id}
-                  scope={scope}
-                  excludedTeams={excludedTeamsByScopeId[scope.id] ?? []}
-                  showFallbackStatus={dispatchMode === "Auto-assign"}
-                  onUpdate={(patch) => updateTeamScope(scope.id, patch)}
-                />
+                <div key={scope.id}>
+                  <p className="mb-2 text-sm text-neutral-500">Scope</p>
+                  <AgentScopeTeamCard
+                    scope={scope}
+                    disabledTeamClaims={disabledTeamClaimsByScopeId[scope.id] ?? {}}
+                    showFallbackStatus={dispatchMode === "Auto-assign"}
+                    onRemove={
+                      teamScopes.length > 1 ? () => removeTeamScope(scope.id) : undefined
+                    }
+                    onUpdate={(patch) => updateTeamScope(scope.id, patch)}
+                  />
+                </div>
               ))}
             </div>
             {teamScopes[0] ? (

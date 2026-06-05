@@ -50,6 +50,7 @@ import {
   Info,
   LayoutGrid,
   Lock,
+  MapPin,
   MessageSquare,
   ListOrdered,
   MoreHorizontal,
@@ -74,6 +75,7 @@ import {
   X,
   Zap,
   RotateCcw,
+  Search,
 } from "lucide-react";
 
 import {
@@ -156,6 +158,16 @@ const SCOPE_FILTER_METADATA = {
     icon: Globe,
     values: ["North", "South", "East", "West"],
   },
+  Site: {
+    icon: MapPin,
+    values: [
+      "Headquarters - Austin",
+      "Branch Office - Dallas",
+      "Branch Office - Houston",
+      "Warehouse - San Antonio",
+      "Remote Hub - East Coast",
+    ],
+  },
 };
 const SCOPE_FILTER_OPTIONS = Object.keys(SCOPE_FILTER_METADATA);
 
@@ -193,6 +205,23 @@ function newConditionId() {
 // SHARED PRIMITIVES
 // =============================================================================
 
+function DropdownMenuSearch({ inputRef, value, onChange, placeholder = "Find..." }) {
+  return (
+    <div className="sticky top-0 z-10 w-full min-w-0 shrink-0 overflow-hidden border-b border-neutral-200 bg-white px-3 py-2.5 box-border">
+      <div className="flex w-full min-w-0 items-center gap-2">
+        <Search size={14} className="shrink-0 text-neutral-400" strokeWidth={2} aria-hidden />
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-0"
+        />
+      </div>
+    </div>
+  );
+}
+
 function Select({
   value,
   options,
@@ -202,7 +231,7 @@ function Select({
   dropdownClassName = "",
   placeholder = "Select",
   searchable = false,
-  searchPlaceholder = "Type to filter...",
+  searchPlaceholder = "Find...",
   menuMaxHeight,
   menuWidth,
   disabledClaims = {},
@@ -266,27 +295,22 @@ function Select({
     open && menuPosition ? (
       <div
         ref={menuRef}
-        className={`fixed bg-white border border-neutral-200 rounded-md shadow-lg py-1 z-[200] overflow-y-auto ${menuMaxHeight ? "" : "max-h-64"} ${dropdownClassName}`}
+        className={`fixed z-[200] min-w-0 overflow-x-hidden overflow-y-auto bg-white border border-neutral-200 rounded-md shadow-lg py-1 ${menuMaxHeight ? "" : "max-h-64"} ${dropdownClassName}`}
         style={{
           top: menuPosition.top,
           left: menuPosition.left,
-          ...(menuWidth
-            ? { width: menuWidth }
-            : { minWidth: menuPosition.minWidth }),
+          width: menuWidth ?? menuPosition.minWidth,
           ...(menuMaxHeight ? { maxHeight: menuMaxHeight } : undefined),
         }}
       >
-        {searchable && (
-          <div className="sticky top-0 bg-white px-2 pb-2 pt-1 border-b border-neutral-100">
-            <input
-              ref={searchInputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={searchPlaceholder}
-              className="w-full h-8 px-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-            />
-          </div>
-        )}
+        {searchable ? (
+          <DropdownMenuSearch
+            inputRef={searchInputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={searchPlaceholder}
+          />
+        ) : null}
         {filteredOptions.length === 0 ? (
           <div className="px-3 py-2 text-sm text-neutral-500">No matches found</div>
         ) : (
@@ -359,7 +383,7 @@ function MultiSelect({
   triggerClassName = "",
   dropdownClassName = "",
   searchable = false,
-  searchPlaceholder = "Type to filter...",
+  searchPlaceholder = "Find...",
   withSelectAll = false,
   disabled = false,
   disabledMessage = "Disabled",
@@ -463,26 +487,23 @@ function MultiSelect({
     open && menuPosition && !disabled ? (
       <div
         ref={menuRef}
-        className={`fixed z-[200] flex flex-col bg-white border border-neutral-200 rounded-md shadow-lg ${dropdownClassName}`}
+        className={`fixed z-[200] flex min-w-0 flex-col overflow-hidden bg-white border border-neutral-200 rounded-md shadow-lg ${dropdownClassName}`}
         style={{
           top: menuPosition.top,
           left: menuPosition.left,
-          ...(menuWidth ? { width: menuWidth } : { minWidth: menuPosition.minWidth }),
+          width: menuWidth ?? menuPosition.minWidth,
           maxHeight: menuMaxHeight,
         }}
       >
-        {searchable && (
-          <div className="px-2 pb-2 pt-1 border-b border-neutral-100 shrink-0">
-            <input
-              ref={searchInputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={searchPlaceholder}
-              className="w-full h-8 px-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-            />
-          </div>
-        )}
-        <div className="flex-1 overflow-y-auto py-1 min-h-0">
+        {searchable ? (
+          <DropdownMenuSearch
+            inputRef={searchInputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={searchPlaceholder}
+          />
+        ) : null}
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto py-1">
           {filteredOptions.length === 0 ? (
             <div className="px-3 py-2 text-sm text-neutral-500">No matches found</div>
           ) : (
@@ -948,10 +969,24 @@ function ScopeTeamConditionsEditor({
   openConditionMenu,
   setOpenConditionMenu,
 }) {
+  const [valueSearchQuery, setValueSearchQuery] = useState("");
+  const valueSearchInputRef = useRef(null);
+  const isValueMenuOpen =
+    openConditionMenu?.kind === "value" && openConditionMenu.team === team;
+
+  useEffect(() => {
+    if (!isValueMenuOpen) {
+      setValueSearchQuery("");
+      return undefined;
+    }
+    valueSearchInputRef.current?.focus();
+  }, [isValueMenuOpen, openConditionMenu?.conditionId]);
+
   const activeFilterTypes = new Set(conditions.map((condition) => condition.filterType));
   const availableFilterOptions = SCOPE_FILTER_OPTIONS.filter(
     (filterType) => !activeFilterTypes.has(filterType)
   );
+  const normalizedValueSearchQuery = valueSearchQuery.trim().toLowerCase();
 
   const handleAddFilter = (filterType) => {
     const existing = teamConditions[team] || [];
@@ -1002,6 +1037,9 @@ function ScopeTeamConditionsEditor({
           menuTeam === team &&
           menuConditionId === condition.id;
         const hasEmptyValue = !selectedValues.length;
+        const filteredValueOptions = valueOptions.filter((value) =>
+          value.toLowerCase().includes(normalizedValueSearchQuery)
+        );
 
         return (
           <div
@@ -1045,32 +1083,43 @@ function ScopeTeamConditionsEditor({
             {valueMenuOpen ? (
               <div
                 data-condition-menu=""
-                className="absolute left-0 top-full z-[120] mt-1 w-fit max-w-[240px] max-h-[260px] overflow-y-auto overflow-x-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl"
+                className="absolute left-0 top-full z-[120] mt-1 flex w-[240px] min-w-0 max-w-[240px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl"
               >
-                {valueOptions.map((value) => {
-                  const checked = selectedValues.includes(value);
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => handleToggleValue(condition, value)}
-                      className="flex max-w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] text-neutral-900 hover:bg-neutral-50"
-                    >
-                      <span
-                        className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
-                          checked
-                            ? "border-emerald-500 bg-emerald-500"
-                            : "border-neutral-300 bg-white"
-                        }`}
-                      >
-                        {checked ? (
-                          <Check size={10} className="text-white" strokeWidth={3} />
-                        ) : null}
-                      </span>
-                      <span className="min-w-0 truncate">{value}</span>
-                    </button>
-                  );
-                })}
+                <DropdownMenuSearch
+                  inputRef={valueSearchInputRef}
+                  value={valueSearchQuery}
+                  onChange={(e) => setValueSearchQuery(e.target.value)}
+                />
+                <div className="max-h-[220px] min-w-0 overflow-x-hidden overflow-y-auto p-1.5">
+                  {filteredValueOptions.length === 0 ? (
+                    <div className="px-2 py-2 text-[12px] text-neutral-500">No matches found</div>
+                  ) : (
+                    filteredValueOptions.map((value) => {
+                        const checked = selectedValues.includes(value);
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => handleToggleValue(condition, value)}
+                            className="flex w-full max-w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] text-neutral-900 hover:bg-neutral-50"
+                          >
+                            <span
+                              className={`flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-[4px] border ${
+                                checked
+                                  ? "border-emerald-500 bg-emerald-500"
+                                  : "border-neutral-300 bg-white"
+                              }`}
+                            >
+                              {checked ? (
+                                <Check size={10} className="text-white" strokeWidth={3} />
+                              ) : null}
+                            </span>
+                            <span className="min-w-0 truncate">{value}</span>
+                          </button>
+                        );
+                      })
+                  )}
+                </div>
               </div>
             ) : null}
           </div>
@@ -1092,7 +1141,7 @@ function ScopeTeamConditionsEditor({
             className="inline-flex h-6 items-center gap-1 rounded-md border border-emerald-500 px-2 py-[3px] text-[12px] font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
           >
             <Plus size={12} />
-            Add condition
+            Add filter
           </button>
           {openConditionMenu?.kind === "field" && openConditionMenu.team === team ? (
             <div
@@ -1271,7 +1320,6 @@ function AgentScopeTeamCard({
                         onChange={(statuses) => handleBoardStatusChange(board, statuses)}
                         placeholder="Select status"
                         searchable
-                        searchPlaceholder="Search statuses..."
                         summaryLabel={
                           selectedBoardStatuses.length === 0
                             ? undefined

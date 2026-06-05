@@ -152,6 +152,10 @@ const normalizeSelections = (value) => {
   return [];
 };
 
+function getScopeViews(scope) {
+  return normalizeSelections(scope.views ?? scope.view ?? scope.boards ?? scope.board);
+}
+
 /** Avatar swatches for the agent identity picker (IDs persisted on saved agents). */
 const AGENT_AVATAR_PRESETS = [
   { id: "avatar-1", swatch: "bg-gradient-to-br from-sky-400 to-emerald-500" },
@@ -697,7 +701,7 @@ function Section({ title, subcopy, children }) {
 
 function isTeamScopeConfigured(scope) {
   const teams = normalizeSelections(scope.teams ?? scope.team);
-  return Boolean(teams.length > 0 && scope.view);
+  return Boolean(teams.length > 0 && getScopeViews(scope).length > 0);
 }
 
 function createTeamCondition(initial = {}) {
@@ -764,9 +768,39 @@ function getBoardFallbackStatusOptions(board) {
   return ["No change", ...statuses.filter((status) => status !== "No change")];
 }
 
+function getBoardsStatusOptions(boards) {
+  const seen = new Set();
+  const options = [];
+  normalizeSelections(boards).forEach((board) => {
+    getBoardStatusOptions(board).forEach((status) => {
+      if (!seen.has(status)) {
+        seen.add(status);
+        options.push(status);
+      }
+    });
+  });
+  return options;
+}
+
+function getBoardsFallbackStatusOptions(boards) {
+  const seen = new Set();
+  const options = [];
+  normalizeSelections(boards).forEach((board) => {
+    getBoardFallbackStatusOptions(board).forEach((status) => {
+      if (!seen.has(status)) {
+        seen.add(status);
+        options.push(status);
+      }
+    });
+  });
+  return options;
+}
+
 function resolveScopeStatuses(initial = {}) {
-  const view = initial.view ?? initial.board ?? "";
-  if (!view) return [];
+  const views = normalizeSelections(
+    initial.views ?? initial.view ?? initial.boards ?? initial.board
+  );
+  if (!views.length) return [];
 
   let statuses = [];
   if (Array.isArray(initial.statuses)) {
@@ -775,31 +809,35 @@ function resolveScopeStatuses(initial = {}) {
     statuses = [initial.status];
   }
 
-  const options = getBoardStatusOptions(view);
-  return statuses.filter((status) => options.includes(status));
+  const options = new Set(getBoardsStatusOptions(views));
+  return statuses.filter((status) => options.has(status));
 }
 
 function resolveScopeFallbackStatus(initial = {}) {
-  const view = initial.view ?? initial.board ?? "";
-  if (!view) return "";
+  const views = normalizeSelections(
+    initial.views ?? initial.view ?? initial.boards ?? initial.board
+  );
+  if (!views.length) return "";
 
-  const options = getBoardFallbackStatusOptions(view);
+  const options = getBoardsFallbackStatusOptions(views);
   const fallbackStatus = initial.fallbackStatus ?? "";
   return options.includes(fallbackStatus) ? fallbackStatus : "";
 }
 
 function createTeamScope(id, initial = {}) {
   const teams = normalizeSelections(initial.teams ?? initial.team);
-  const view = initial.view ?? initial.board ?? "";
+  const views = normalizeSelections(
+    initial.views ?? initial.view ?? initial.boards ?? initial.board
+  );
   const teamConditions = resolveTeamConditions(initial);
 
   return {
     id,
     teams,
-    view,
+    views,
     teamConditions,
-    statuses: resolveScopeStatuses({ ...initial, view }),
-    fallbackStatus: resolveScopeFallbackStatus({ ...initial, view }),
+    statuses: resolveScopeStatuses({ ...initial, views }),
+    fallbackStatus: resolveScopeFallbackStatus({ ...initial, views }),
     skipFlowAssignedTickets: initial.skipFlowAssignedTickets ?? false,
   };
 }
@@ -887,8 +925,9 @@ function updateTeamConditionInScope(teamConditions, team, conditionId, patch) {
 
 function ScopeCardHeaderLabel({ scope }) {
   const teams = normalizeSelections(scope.teams ?? scope.team);
+  const views = getScopeViews(scope);
   const hasTeams = teams.length > 0;
-  const hasBoard = Boolean(scope.view);
+  const hasBoard = views.length > 0;
 
   if (!hasTeams && !hasBoard) {
     return <span className="font-normal text-[#605F68]">Select team</span>;
@@ -903,7 +942,7 @@ function ScopeCardHeaderLabel({ scope }) {
       )}
       <span className="text-[#605F68]"> • </span>
       <span className="font-normal text-[#605F68]">
-        {hasBoard ? scope.view : "Select board"}
+        {hasBoard ? views.join(", ") : "Select board"}
       </span>
     </>
   );
@@ -1173,27 +1212,28 @@ function AgentScopeTeamCard({
     onUpdate({ teamConditions: nextTeamConditions });
   };
 
-  const hasBoard = Boolean(scope.view);
-  const statusOptions = getBoardStatusOptions(scope.view);
-  const fallbackStatusOptions = getBoardFallbackStatusOptions(scope.view);
+  const views = getScopeViews(scope);
+  const hasBoard = views.length > 0;
+  const statusOptions = getBoardsStatusOptions(views);
+  const fallbackStatusOptions = getBoardsFallbackStatusOptions(views);
 
-  const handleBoardChange = (view) => {
-    const patch = { view };
-    if (!view) {
+  const handleBoardsChange = (nextViews) => {
+    const patch = { views: nextViews };
+    if (!nextViews.length) {
       patch.statuses = [];
       patch.fallbackStatus = "";
       onUpdate(patch);
       return;
     }
 
-    const nextStatusOptions = getBoardStatusOptions(view);
-    const nextFallbackOptions = getBoardFallbackStatusOptions(view);
+    const nextStatusOptions = new Set(getBoardsStatusOptions(nextViews));
+    const nextFallbackOptions = new Set(getBoardsFallbackStatusOptions(nextViews));
     const currentStatuses = scope.statuses ?? [];
-    const validStatuses = currentStatuses.filter((status) => nextStatusOptions.includes(status));
+    const validStatuses = currentStatuses.filter((status) => nextStatusOptions.has(status));
     if (validStatuses.length !== currentStatuses.length) {
       patch.statuses = validStatuses;
     }
-    if (scope.fallbackStatus && !nextFallbackOptions.includes(scope.fallbackStatus)) {
+    if (scope.fallbackStatus && !nextFallbackOptions.has(scope.fallbackStatus)) {
       patch.fallbackStatus = "";
     }
     onUpdate(patch);
@@ -1269,11 +1309,18 @@ function AgentScopeTeamCard({
                   The Board to dispatch threads from
                 </p>
               </div>
-              <Select
-                value={scope.view}
+              <MultiSelect
+                values={views}
                 options={SCOPE_BOARD_OPTIONS}
-                onChange={handleBoardChange}
+                onChange={handleBoardsChange}
                 placeholder="Select board"
+                summaryLabel={
+                  views.length === 0
+                    ? undefined
+                    : views.length === 1
+                      ? views[0]
+                      : `${views.length} boards selected`
+                }
                 dropdownClassName="w-[220px]"
               />
             </div>
@@ -2222,7 +2269,13 @@ function ConfigPage({
           teams: normalizeSelections(
             scope.teams ?? scope.team ?? (initialTeams[index] ? [initialTeams[index]] : [])
           ),
-          view: scope.view ?? scope.board ?? initialViews[index] ?? "",
+          views: normalizeSelections(
+            scope.views ??
+              scope.view ??
+              scope.board ??
+              scope.boards ??
+              (initialViews[index] ? [initialViews[index]] : initialViews)
+          ),
           fallbackStatus: scope.fallbackStatus ?? initialAgent?.fallbackStatus,
         })
       );
@@ -2231,7 +2284,9 @@ function ConfigPage({
       return initialTeams.map((team, index) =>
         createTeamScope(index + 1, {
           teams: [team],
-          view: initialViews[index] ?? initialViews[0] ?? "",
+          views: normalizeSelections(
+            initialViews[index] ? [initialViews[index]] : initialViews
+          ),
           statuses: initialAgent?.statuses ?? [],
           fallbackStatus: initialAgent?.fallbackStatus,
           skipFlowAssignedTickets: initialAgent?.skipFlowAssignedTickets ?? false,
@@ -2402,7 +2457,7 @@ function ConfigPage({
     [teamScopes]
   );
   const scopeViews = useMemo(
-    () => teamScopes.map((scope) => scope.view).filter(Boolean),
+    () => teamScopes.flatMap((scope) => getScopeViews(scope)),
     [teamScopes]
   );
   const excludedTeamsByScopeId = useMemo(() => {

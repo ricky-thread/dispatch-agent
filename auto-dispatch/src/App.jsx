@@ -1327,7 +1327,7 @@ function AgentScopeTeamCard({
                               ? selectedBoardStatuses[0]
                               : `${selectedBoardStatuses.length} selected`
                         }
-                        dropdownClassName="w-[220px]"
+                        dropdownClassName="min-w-[180px] w-[220px]"
                       />
                     </div>
                   );

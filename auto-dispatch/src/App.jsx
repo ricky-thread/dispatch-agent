@@ -127,6 +127,7 @@ function formatLastSaved(date) {
   return `Last saved on ${datePart} at ${timePart}`;
 }
 const SCOPE_BOARD_OPTIONS = ["Help Desk", "Quick Fix", "Network", "Projects", "Voice"];
+const SCOPE_DROPDOWN_MIN_WIDTH = 200;
 
 function scopeBoardStatusLabel(board) {
   return `{${board}} dispatch status`;
@@ -234,6 +235,7 @@ function Select({
   searchPlaceholder = "Find...",
   menuMaxHeight,
   menuWidth,
+  menuMinWidth,
   disabledClaims = {},
   disabled = false,
 }) {
@@ -245,6 +247,10 @@ function Select({
   const menuRef = useRef(null);
   const searchInputRef = useRef(null);
   const isEmpty = !value;
+  const resolvedMenuWidth = (triggerWidth) =>
+    menuMinWidth
+      ? Math.max(menuWidth ?? triggerWidth, menuMinWidth)
+      : menuWidth ?? triggerWidth;
   const normalizedQuery = query.trim().toLowerCase();
   const filteredOptions = searchable
     ? options.filter((opt) => opt.toLowerCase().includes(normalizedQuery))
@@ -299,7 +305,7 @@ function Select({
         style={{
           top: menuPosition.top,
           left: menuPosition.left,
-          width: menuWidth ?? menuPosition.minWidth,
+          width: resolvedMenuWidth(menuPosition.minWidth),
           ...(menuMaxHeight ? { maxHeight: menuMaxHeight } : undefined),
         }}
       >
@@ -401,10 +407,15 @@ function MultiSelect({
   selectionInTrigger = true,
   menuMaxHeight = "min(34rem, calc(100vh - 6rem))",
   menuWidth,
+  menuMinWidth,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [menuPosition, setMenuPosition] = useState(null);
+  const resolvedMenuWidth = (triggerWidth) =>
+    menuMinWidth
+      ? Math.max(menuWidth ?? triggerWidth, menuMinWidth)
+      : menuWidth ?? triggerWidth;
   const rootRef = useRef(null);
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
@@ -491,7 +502,7 @@ function MultiSelect({
         style={{
           top: menuPosition.top,
           left: menuPosition.left,
-          width: menuWidth ?? menuPosition.minWidth,
+          width: resolvedMenuWidth(menuPosition.minWidth),
           maxHeight: menuMaxHeight,
         }}
       >
@@ -523,18 +534,11 @@ function MultiSelect({
                     <span className="min-w-0 flex-1 truncate text-neutral-400">
                       {renderOptionLabel?.(opt) || opt}
                     </span>
-                    {usedByAgentName ? (
-                      <Lock
-                        size={13}
-                        className="shrink-0 text-neutral-400"
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                    ) : (
+                    {!usedByAgentName && legacyDisabledReason ? (
                       <span className="shrink-0 text-[11px] font-medium text-neutral-400">
                         In use
                       </span>
-                    )}
+                    ) : null}
                   </>
                 );
                 if (tooltipText) {
@@ -1297,7 +1301,7 @@ function AgentScopeTeamCard({
                       ? views[0]
                       : `${views.length} selected`
                 }
-                dropdownClassName="w-[220px]"
+                menuMinWidth={SCOPE_DROPDOWN_MIN_WIDTH}
               />
             </div>
             {hasBoard ? (
@@ -1327,7 +1331,7 @@ function AgentScopeTeamCard({
                               ? selectedBoardStatuses[0]
                               : `${selectedBoardStatuses.length} selected`
                         }
-                        dropdownClassName="min-w-[180px] w-[220px]"
+                        menuMinWidth={SCOPE_DROPDOWN_MIN_WIDTH}
                       />
                     </div>
                   );
@@ -1366,7 +1370,7 @@ function AgentScopeTeamCard({
                       ? teams[0]
                       : `${teams.length} selected`
                 }
-                dropdownClassName="w-[220px]"
+                menuMinWidth={SCOPE_DROPDOWN_MIN_WIDTH}
                 disabledClaims={disabledTeamClaims}
               />
             </div>
@@ -1412,7 +1416,7 @@ function AgentScopeTeamCard({
                 options={fallbackStatusOptions}
                 onChange={(fallbackStatus) => onUpdate({ fallbackStatus })}
                 placeholder="Select status"
-                dropdownClassName="w-[220px]"
+                menuMinWidth={SCOPE_DROPDOWN_MIN_WIDTH}
               />
             </Row>
           ) : null}

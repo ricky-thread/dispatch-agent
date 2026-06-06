@@ -2799,20 +2799,18 @@ function ConfigPage({
                   : "Use multiple sections when teams share the same dispatch logic."}
               </p>
             </div>
-            <div className="space-y-6">
+            <div className="space-y-3">
               {teamScopes.map((scope) => (
-                <div key={scope.id}>
-                  <p className="mb-2 text-sm text-neutral-500">Scope</p>
-                  <AgentScopeTeamCard
-                    scope={scope}
-                    disabledTeamClaims={disabledTeamClaimsByScopeId[scope.id] ?? {}}
-                    showFallbackStatus={dispatchMode === "Auto-assign"}
-                    onRemove={
-                      teamScopes.length > 1 ? () => removeTeamScope(scope.id) : undefined
-                    }
-                    onUpdate={(patch) => updateTeamScope(scope.id, patch)}
-                  />
-                </div>
+                <AgentScopeTeamCard
+                  key={scope.id}
+                  scope={scope}
+                  disabledTeamClaims={disabledTeamClaimsByScopeId[scope.id] ?? {}}
+                  showFallbackStatus={dispatchMode === "Auto-assign"}
+                  onRemove={
+                    teamScopes.length > 1 ? () => removeTeamScope(scope.id) : undefined
+                  }
+                  onUpdate={(patch) => updateTeamScope(scope.id, patch)}
+                />
               ))}
             </div>
             {teamScopes[0] ? (

@@ -2817,7 +2817,7 @@ function ConfigPage({
                 />
               ))}
             </div>
-            {teamScopes[0] ? (
+            {teamScopes[0] && dispatchMode === "Auto-assign" ? (
               <div className="mt-3 rounded-lg border border-neutral-200 bg-white">
                 <Row
                   label="Skip tickets assigned by Flows"

@@ -1746,9 +1746,11 @@ function RankingPropertyRow({
   );
 }
 
-const RANKING_SIGNALS_INFO_TITLE = "How scoring works";
+const RANKING_SIGNALS_INFO_ARIA_LABEL = "Thread scoring info";
 const RANKING_SIGNALS_INFO_BODY =
-  "Each signal has a weight you control. Tickets earn points based on how they match each signal – for example, a breaching SLA or an unanswered client reply. The ticket with the highest total score ranks first.";
+  "Control how much each ticket property (priority, age, sentiment) influences which tickets get worked first.";
+const RANKING_SIGNALS_INFO_FOOTNOTE =
+  "The defaults set work well for most teams.";
 
 function RankingSignalsSection({ signals, onChangeSignals }) {
   const totalWeight = signals.reduce((sum, signal) => sum + (Number(signal.value) || 0), 0);
@@ -1782,7 +1784,7 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
               <button
                 type="button"
                 className="inline-flex rounded p-0.5 text-neutral-400 hover:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                aria-label={RANKING_SIGNALS_INFO_TITLE}
+                aria-label={RANKING_SIGNALS_INFO_ARIA_LABEL}
               >
                 <Info size={14} aria-hidden />
               </button>
@@ -1793,10 +1795,8 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
               sideOffset={8}
               className="w-[300px] max-w-[300px] rounded-lg !border !border-[#E9E9EB] bg-white px-4 py-3 text-neutral-900 shadow-lg"
             >
-              <div className="text-sm font-medium text-neutral-900">
-                {RANKING_SIGNALS_INFO_TITLE}
-              </div>
-              <p className="mt-2 text-sm text-neutral-500">{RANKING_SIGNALS_INFO_BODY}</p>
+              <p className="text-sm text-neutral-500">{RANKING_SIGNALS_INFO_BODY}</p>
+              <p className="mt-2 text-sm text-neutral-500">{RANKING_SIGNALS_INFO_FOOTNOTE}</p>
             </TooltipContent>
           </Tooltip>
         </div>

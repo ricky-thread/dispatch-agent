@@ -2344,6 +2344,9 @@ function ConfigPage({
   const [maxActiveThreads, setMaxActiveThreads] = useState(
     initialAgent?.maxActiveThreads ?? "No limit"
   );
+  const [maxActiveThreadsStatus, setMaxActiveThreadsStatus] = useState(
+    initialAgent?.maxActiveThreadsStatus ?? "In Progress"
+  );
   const [calendarAvailabilityEnabled, setCalendarAvailabilityEnabled] = useState(() => {
     const agent = initialAgent;
     if (!agent) return false;
@@ -2554,6 +2557,7 @@ function ConfigPage({
       teamScopes: isRoute ? undefined : teamScopes,
       dispatchMode: isRoute ? undefined : dispatchMode,
       maxActiveThreads: isRoute ? undefined : maxActiveThreads,
+      maxActiveThreadsStatus: isRoute ? undefined : maxActiveThreadsStatus,
       calendarAvailabilityEnabled: isRoute ? undefined : calendarAvailabilityEnabled,
       calendarAvailability: isRoute
         ? undefined
@@ -3018,16 +3022,32 @@ function ConfigPage({
               title="Technician assignment"
               subcopy="Define how the agent selects the right technician for each thread."
             >
-              <Row
-                label="Max active threads"
-                subcopy="Maximum active tickets before the agent skips this tech."
-              >
-                <Select
-                  value={maxActiveThreads}
-                  options={["No limit", "5", "10", "15", "20"]}
-                  onChange={setMaxActiveThreads}
-                />
-              </Row>
+              <div className="flex items-start justify-between gap-6 border-b border-neutral-100 px-5 py-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-medium text-neutral-900">Max threads</div>
+                    <span className="text-sm text-neutral-500">in</span>
+                    <Select
+                      value={maxActiveThreadsStatus}
+                      options={DISPATCH_STATUS_OPTIONS}
+                      onChange={setMaxActiveThreadsStatus}
+                      triggerClassName="!h-6 !min-h-6 !max-h-6 !py-0 max-w-[180px] px-2 text-xs"
+                      menuMinWidth={260}
+                      dropdownClassName="min-w-[260px]"
+                    />
+                  </div>
+                  <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                    Maximum active tickets before the agent skips this tech.
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Select
+                    value={maxActiveThreads}
+                    options={["No limit", "5", "10", "15", "20"]}
+                    onChange={setMaxActiveThreads}
+                  />
+                </div>
+              </div>
               <Row
                 label="Calendar availability"
                 subcopy={

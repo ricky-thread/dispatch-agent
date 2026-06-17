@@ -2344,9 +2344,16 @@ function ConfigPage({
   const [maxActiveThreads, setMaxActiveThreads] = useState(
     initialAgent?.maxActiveThreads ?? "No limit"
   );
-  const [maxActiveThreadsStatus, setMaxActiveThreadsStatus] = useState(
-    initialAgent?.maxActiveThreadsStatus ?? "In Progress"
-  );
+  const [maxActiveThreadsStatuses, setMaxActiveThreadsStatuses] = useState(() => {
+    const saved = initialAgent?.maxActiveThreadsStatuses ?? initialAgent?.maxActiveThreadsStatus;
+    if (Array.isArray(saved)) {
+      return saved.filter(Boolean);
+    }
+    if (typeof saved === "string" && saved) {
+      return [saved];
+    }
+    return ["In Progress"];
+  });
   const [calendarAvailabilityEnabled, setCalendarAvailabilityEnabled] = useState(() => {
     const agent = initialAgent;
     if (!agent) return false;
@@ -2557,7 +2564,7 @@ function ConfigPage({
       teamScopes: isRoute ? undefined : teamScopes,
       dispatchMode: isRoute ? undefined : dispatchMode,
       maxActiveThreads: isRoute ? undefined : maxActiveThreads,
-      maxActiveThreadsStatus: isRoute ? undefined : maxActiveThreadsStatus,
+      maxActiveThreadsStatuses: isRoute ? undefined : maxActiveThreadsStatuses,
       calendarAvailabilityEnabled: isRoute ? undefined : calendarAvailabilityEnabled,
       calendarAvailability: isRoute
         ? undefined
@@ -3027,10 +3034,11 @@ function ConfigPage({
                   <div className="flex items-center gap-2">
                     <div className="text-sm font-medium text-neutral-900">Max threads</div>
                     <span className="text-sm text-neutral-500">in</span>
-                    <Select
-                      value={maxActiveThreadsStatus}
+                    <MultiSelect
+                      values={maxActiveThreadsStatuses}
                       options={DISPATCH_STATUS_OPTIONS}
-                      onChange={setMaxActiveThreadsStatus}
+                      onChange={setMaxActiveThreadsStatuses}
+                      placeholder="Select status"
                       triggerClassName="!h-6 !min-h-6 !max-h-6 !py-0 max-w-[180px] px-2 text-xs"
                       menuMinWidth={260}
                       dropdownClassName="min-w-[260px]"

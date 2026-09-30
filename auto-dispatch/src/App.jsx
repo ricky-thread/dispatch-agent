@@ -36,6 +36,7 @@ import TestAgentPanel from "./components/test-agent/TestAgentPanel";
 import {
   ArrowLeft,
   Activity,
+  AlertTriangle,
   Briefcase,
   Building2,
   Check,
@@ -43,14 +44,12 @@ import {
   ChevronDown,
   File,
   FileText,
+  Flag,
   Folder,
   Globe,
-  HelpCircle,
   Inbox,
   Info,
-  LayoutGrid,
   Lock,
-  MapPin,
   MessageSquare,
   ListOrdered,
   MoreHorizontal,
@@ -71,19 +70,26 @@ import {
   Users,
   Wallet,
   Wand2,
-  Workflow,
   X,
   Zap,
   RotateCcw,
   Search,
+  Shuffle,
+  Clock,
+  CalendarDays,
+  User,
+  ListChecks,
 } from "lucide-react";
 
 import {
   BOARDS,
   BOARD_DISPATCH_STATUSES,
-  DISPATCH_STATUS_OPTIONS,
+  PRODUCTION_BOARD_STATUSES,
+  MAX_ACTIVE_THREADS_OPTIONS,
   STATUSES,
   TEAMS,
+  TECHS,
+  TECH_NAMES,
   HOUR_OPTIONS,
   ROUTE_CONDITION_FIELDS,
   ROUTE_CONDITION_VALUES,
@@ -102,17 +108,6 @@ const DEFAULT_ASSIGN_AGENT_INSTRUCTIONS = `Prioritize tickets in the following o
 Custom rules:
 - Tickets from managed services agreements should rank above break fix tickets of equal priority.`;
 
-function formatLastPublished(date) {
-  const month = date.toLocaleString("en-US", { month: "long" });
-  const day = date.getDate();
-  const time = date.toLocaleString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-  return `Last published ${month} ${day} at ${time}`;
-}
-
 function formatLastSaved(date) {
   const datePart = date.toLocaleString("en-US", {
     month: "long",
@@ -126,11 +121,37 @@ function formatLastSaved(date) {
   });
   return `Last saved on ${datePart} at ${timePart}`;
 }
-const SCOPE_BOARD_OPTIONS = ["Help Desk", "Quick Fix", "Network", "Projects", "Voice"];
+
+function formatExcludedTechsWarning(orphanedNames) {
+  if (orphanedNames.length === 0) return null;
+  if (orphanedNames.length === 1) {
+    return `${orphanedNames[0]} is not on any of the selected teams and will be skipped during dispatch.`;
+  }
+  if (orphanedNames.length === 2) {
+    return `${orphanedNames[0]} and ${orphanedNames[1]} are not on any of the selected teams and will be skipped during dispatch.`;
+  }
+  const remaining = orphanedNames.length - 2;
+  return `${orphanedNames[0]}, ${orphanedNames[1]} and ${remaining} other${
+    remaining === 1 ? "" : "s"
+  } are not on any of the selected teams and will be skipped during dispatch.`;
+}
+
+const SCOPE_BOARD_OPTIONS = [
+  "BoardIsmoil",
+  "BriannaBoard",
+  "Help Desk",
+  "Integration",
+  "Procurement",
+  "Professional Services",
+  "Projects-2-10",
+  "Projects-2-13",
+  "Projects-2-14",
+  "Projects-2-15",
+];
 const SCOPE_DROPDOWN_MIN_WIDTH = 200;
 
 function scopeBoardStatusLabel(board) {
-  return `{${board}} dispatch status`;
+  return `${board} dispatch status`;
 }
 
 function ScopeNestedGroup({ children, className = "" }) {
@@ -140,13 +161,20 @@ function ScopeNestedGroup({ children, className = "" }) {
     </div>
   );
 }
+const COMPANY_TYPE_OPTIONS = [
+  "At Risk",
+  "Competition",
+  "Customer",
+  "Not-a-fit",
+  "Owner",
+  "Partner",
+  "Prospect",
+  "Suspect",
+];
+
 const SCOPE_FILTER_METADATA = {
-  "Company type": {
-    icon: Building2,
-    values: ["Managed Service", "Break Fix", "Internal", "Government"],
-  },
-  "Agreement type": {
-    icon: FileText,
+  "Agreement Type": {
+    icon: File,
     values: [
       "Block Time - One time",
       "Block Time - Recurring",
@@ -155,19 +183,55 @@ const SCOPE_FILTER_METADATA = {
       "Time and materials",
     ],
   },
-  Territory: {
-    icon: Globe,
-    values: ["North", "South", "East", "West"],
-  },
-  Site: {
-    icon: MapPin,
+  Companies: {
+    icon: Building2,
     values: [
-      "Headquarters - Austin",
-      "Branch Office - Dallas",
-      "Branch Office - Houston",
-      "Warehouse - San Antonio",
-      "Remote Hub - East Coast",
+      "Acme Manufacturing",
+      "Brightline Schools",
+      "Harbor Hospitality",
+      "Northstar Health",
+      "Oceanic Logistics",
+      "Redwood Legal Group",
+      "Summit Retail",
+      "Zenith Finance",
     ],
+  },
+  "Company Type": {
+    icon: Folder,
+    values: COMPANY_TYPE_OPTIONS,
+  },
+  Priority: {
+    icon: Flag,
+    values: ["Critical", "High", "Medium", "Low"],
+  },
+  "Resource Team": {
+    icon: Users,
+    values: ["Team A", "Team A - L1"],
+  },
+  Source: {
+    icon: MessageSquare,
+    values: [
+      "Attendant Phone",
+      "Automate",
+      "Chatgenie Messenger",
+      "Email",
+      "Internal",
+      "Overflow Phone",
+      "Phone",
+      "Thread Messenger",
+    ],
+  },
+  Status: {
+    icon: CheckSquare,
+    values: [...PRODUCTION_BOARD_STATUSES],
+  },
+  "Sub Type": {
+    icon: Folder,
+    values: ["Access", "Hardware", "Network", "Software"],
+  },
+  Type: {
+    icon: Folder,
+    values: ["Change", "Incident", "Problem", "Service Request"],
   },
 };
 const SCOPE_FILTER_OPTIONS = Object.keys(SCOPE_FILTER_METADATA);
@@ -400,6 +464,8 @@ function MultiSelect({
   renderOptionLabel = null,
   renderChipLabel = null,
   summaryLabel = null,
+  /** Values shown checked with a lock icon; they can't be toggled off. */
+  lockedValues = [],
   showCount = false,
   totalCount = null,
   showChips = false,
@@ -467,6 +533,7 @@ function MultiSelect({
   }, [open, searchable]);
 
   const toggle = (opt) => {
+    if (lockedValues.includes(opt)) return;
     if (disabledClaims?.[opt]) return;
     const reason = getDisabledReason?.(opt) || disabledOptions?.[opt];
     if (reason) return;
@@ -571,6 +638,23 @@ function MultiSelect({
                   </div>
                 );
               }
+              if (lockedValues.includes(opt)) {
+                return (
+                  <div
+                    key={opt}
+                    role="option"
+                    aria-selected
+                    aria-disabled="true"
+                    className="flex w-full cursor-default items-center gap-2 bg-neutral-50 px-3 py-1.5 text-left text-sm text-neutral-500"
+                  >
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-neutral-300 bg-neutral-200">
+                      <Check size={11} className="text-neutral-400" strokeWidth={3} />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{renderOptionLabel?.(opt) || opt}</span>
+                    <Lock size={13} className="shrink-0 text-neutral-400" aria-hidden />
+                  </div>
+                );
+              }
               return (
                 <button
                   key={opt}
@@ -590,7 +674,7 @@ function MultiSelect({
                   >
                     {selected && <Check size={11} className="text-white" strokeWidth={3} />}
                   </span>
-                  <span className={`min-w-0 flex-1 truncate ${selected ? "font-semibold" : ""}`}>
+                  <span className="min-w-0 flex-1 truncate">
                     {renderOptionLabel?.(opt) || opt}
                   </span>
                 </button>
@@ -640,7 +724,7 @@ function MultiSelect({
               {values.map((opt) => (
                 <span
                   key={opt}
-                  className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-700 max-w-[170px]"
+                  className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700 max-w-[170px]"
                 >
                   <span className="truncate">{renderChipLabel?.(opt) || opt}</span>
                   <span
@@ -732,7 +816,7 @@ function Section({ title, subcopy, children }) {
         <h2 className="text-base font-semibold text-neutral-900">{title}</h2>
         {subcopy && <p className="text-sm text-neutral-500 mt-0.5">{subcopy}</p>}
       </div>
-      <div className="bg-white border border-neutral-200 rounded-lg">{children}</div>
+      <div className="bg-white border border-neutral-200 rounded-lg shadow-sm">{children}</div>
     </div>
   );
 }
@@ -774,7 +858,7 @@ function resolveTeamConditions(initial = {}) {
 
 function getBoardStatusOptions(board) {
   if (!board) return [];
-  return BOARD_DISPATCH_STATUSES[board] ?? DISPATCH_STATUS_OPTIONS;
+  return BOARD_DISPATCH_STATUSES[board] ?? PRODUCTION_BOARD_STATUSES;
 }
 
 function getBoardFallbackStatusOptions(board) {
@@ -940,7 +1024,7 @@ function ScopeCardHeaderLabel({ scope }) {
   const hasBoard = views.length > 0;
 
   if (!hasTeams && !hasBoard) {
-    return <span className="font-normal text-[#605F68]">Select team</span>;
+    return <span className="font-normal text-[#605F68]">Nothing set up</span>;
   }
 
   return (
@@ -955,11 +1039,11 @@ function ScopeCardHeaderLabel({ scope }) {
           ))}
         </span>
       ) : (
-        <span className="font-normal text-[#605F68]">Select team</span>
+        <span className="font-normal text-[#605F68]">Select Inbox Team</span>
       )}
       <span className="text-[#605F68]"> • </span>
       <span className="font-normal text-[#605F68]">
-        {hasBoard ? views.join(", ") : "Select board"}
+        {hasBoard ? views.join(", ") : "Select Board"}
       </span>
     </>
   );
@@ -991,6 +1075,15 @@ function ScopeTeamConditionsEditor({
     (filterType) => !activeFilterTypes.has(filterType)
   );
   const normalizedValueSearchQuery = valueSearchQuery.trim().toLowerCase();
+  const [fieldSearchQuery, setFieldSearchQuery] = useState("");
+  const isFieldMenuOpen =
+    openConditionMenu?.kind === "field" && openConditionMenu.team === team;
+  useEffect(() => {
+    if (!isFieldMenuOpen) setFieldSearchQuery("");
+  }, [isFieldMenuOpen]);
+  const visibleFilterOptions = availableFilterOptions.filter((filterType) =>
+    filterType.toLowerCase().includes(fieldSearchQuery.trim().toLowerCase())
+  );
 
   const handleAddFilter = (filterType) => {
     const existing = teamConditions[team] || [];
@@ -1021,7 +1114,7 @@ function ScopeTeamConditionsEditor({
 
   const conditionValueLabel = (condition) => {
     const values = condition.valueIds || [];
-    if (values.length === 0) return "Select";
+    if (values.length === 0) return "...";
     if (values.length === 1) return values[0];
     return `${values.length} selected`;
   };
@@ -1093,6 +1186,7 @@ function ScopeTeamConditionsEditor({
                   inputRef={valueSearchInputRef}
                   value={valueSearchQuery}
                   onChange={(e) => setValueSearchQuery(e.target.value)}
+                  placeholder="Search"
                 />
                 <div className="max-h-[220px] min-w-0 overflow-x-hidden overflow-y-auto p-1.5">
                   {filteredValueOptions.length === 0 ? (
@@ -1150,9 +1244,15 @@ function ScopeTeamConditionsEditor({
           {openConditionMenu?.kind === "field" && openConditionMenu.team === team ? (
             <div
               data-condition-menu=""
-              className="absolute left-0 top-full z-[120] mt-1 w-fit max-w-[240px] overflow-x-hidden rounded-xl border border-neutral-200 bg-white p-2 shadow-xl"
+              className="absolute left-0 top-full z-[120] mt-1 w-[240px] overflow-x-hidden rounded-xl border border-neutral-200 bg-white shadow-xl"
             >
-              {availableFilterOptions.map((filterType) => {
+              <DropdownMenuSearch
+                value={fieldSearchQuery}
+                onChange={(e) => setFieldSearchQuery(e.target.value)}
+                placeholder="Search"
+              />
+              <div className="p-2">
+              {visibleFilterOptions.map((filterType) => {
                 const FilterIcon = SCOPE_FILTER_METADATA[filterType]?.icon || FileText;
                 return (
                   <button
@@ -1166,6 +1266,7 @@ function ScopeTeamConditionsEditor({
                   </button>
                 );
               })}
+              </div>
             </div>
           ) : null}
         </div>
@@ -1177,7 +1278,9 @@ function ScopeTeamConditionsEditor({
 function AgentScopeTeamCard({
   scope,
   disabledTeamClaims = {},
-  showFallbackStatus = false,
+  showExcludeTechs = false,
+  excludeTechs = [],
+  onExcludeTechsChange,
   onRemove,
   onUpdate,
 }) {
@@ -1199,7 +1302,17 @@ function AgentScopeTeamCard({
 
   const views = getScopeViews(scope);
   const hasBoard = views.length > 0;
-  const fallbackStatusOptions = getBoardsFallbackStatusOptions(views);
+
+  const orphanedExcludedTechs = useMemo(() => {
+    if (!showExcludeTechs || excludeTechs.length === 0) return [];
+    return excludeTechs.filter((techName) => {
+      const tech = TECHS.find((entry) => entry.name === techName);
+      if (!tech) return true;
+      if (teams.length === 0) return true;
+      return !tech.teams.some((team) => teams.includes(team));
+    });
+  }, [excludeTechs, showExcludeTechs, teams]);
+  const excludedTechsWarning = formatExcludedTechsWarning(orphanedExcludedTechs);
 
   const handleBoardsChange = (nextViews) => {
     const patch = { views: nextViews };
@@ -1263,7 +1376,7 @@ function AgentScopeTeamCard({
   );
 
   return (
-    <div className="bg-white border border-neutral-200 rounded-lg overflow-visible">
+    <div className="bg-white border border-neutral-200 rounded-lg overflow-visible shadow-sm">
       <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-3.5">
         <span className="min-w-0 flex-1 truncate text-sm">
           <ScopeCardHeaderLabel scope={scope} />
@@ -1281,19 +1394,22 @@ function AgentScopeTeamCard({
       </div>
 
       <div>
-          <div className="border-b-[1px] border-solid border-neutral-100 px-5 py-4">
+          <div className="border-b border-neutral-100 px-5 py-4">
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-neutral-900">Dispatch from</div>
                 <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                  Select the board to dispatch threads from. Add conditions to narrow the scope.
+                  Select the board to dispatch threads from. Only unassigned threads will enter the
+                  queue.
                 </p>
               </div>
               <MultiSelect
                 values={views}
                 options={SCOPE_BOARD_OPTIONS}
                 onChange={handleBoardsChange}
-                placeholder="Select board"
+                placeholder="Select Board"
+                searchable
+                searchPlaceholder="Search boards"
                 summaryLabel={
                   views.length === 0
                     ? undefined
@@ -1315,7 +1431,8 @@ function AgentScopeTeamCard({
                           {scopeBoardStatusLabel(board)}
                         </div>
                         <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                          Select status(es) the dispatcher should focus on in this board
+                          Select status(es) the dispatcher should focus on in this board. Once
+                          assigned, these threads count toward a tech&apos;s active thread limit.
                         </p>
                       </div>
                       <MultiSelect
@@ -1324,6 +1441,7 @@ function AgentScopeTeamCard({
                         onChange={(statuses) => handleBoardStatusChange(board, statuses)}
                         placeholder="Select status"
                         searchable
+                        searchPlaceholder="Search statuses"
                         summaryLabel={
                           selectedBoardStatuses.length === 0
                             ? undefined
@@ -1342,21 +1460,23 @@ function AgentScopeTeamCard({
 
           <div
             className={`px-5 py-4 ${
-              showFallbackStatus && hasBoard ? "border-b border-neutral-100" : ""
+              showExcludeTechs ? "border-b border-neutral-100" : ""
             }`}
           >
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-neutral-900">Dispatch to</div>
                 <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                  The Inbox Team threads will be dispatched to
+                  Select the Inbox Team threads will be dispatched to.
                 </p>
               </div>
               <MultiSelect
                 values={teams}
                 options={TEAMS}
                 onChange={handleTeamsChange}
-                placeholder="Select Inbox team"
+                placeholder="Select Inbox Team"
+                searchable
+                searchPlaceholder="Search teams"
                 renderOptionLabel={(team) => (
                   <span className="inline-flex min-w-0 items-center gap-1.5">
                     <TeamIcon team={team} />
@@ -1376,49 +1496,53 @@ function AgentScopeTeamCard({
             </div>
 
             {teams.length > 0 ? (
-              <ScopeNestedGroup>
+              <div className="mt-4 space-y-3">
                 {teams.map((team) => (
                   <div key={team} className="space-y-2">
                     <div className="text-sm font-medium text-neutral-900">
                       <span className="inline-flex min-w-0 items-center gap-1.5">
                         <TeamIcon team={team} />
-                        <span>{team}:</span>
+                        <span>{team}</span>
                       </span>
                     </div>
                     {renderConditionsForTeam(team)}
                   </div>
                 ))}
-              </ScopeNestedGroup>
+                <p className="text-sm text-neutral-500">
+                  Filters help to narrow the scope of threads that teams should focus on
+                  (optional).
+                </p>
+              </div>
             ) : null}
           </div>
 
-          {showFallbackStatus && hasBoard ? (
-            <Row
-              label="Fallback status"
-              subcopy={
-                <>
-                  Status set when no one is available.{" "}
-                  <a
-                    href="#"
-                    className="inline-flex items-center gap-0.5 font-medium text-emerald-600 hover:text-emerald-700"
-                    onClick={(event) => event.preventDefault()}
-                  >
-                    Set up a Flow
-                    <ArrowUpRight size={12} strokeWidth={2.25} aria-hidden />
-                  </a>{" "}
-                  to handle this.
-                </>
-              }
-              noBorder
-            >
-              <Select
-                value={scope.fallbackStatus ?? ""}
-                options={fallbackStatusOptions}
-                onChange={(fallbackStatus) => onUpdate({ fallbackStatus })}
-                placeholder="Select status"
-                menuMinWidth={SCOPE_DROPDOWN_MIN_WIDTH}
-              />
-            </Row>
+          {showExcludeTechs ? (
+            <div className="px-5 py-4">
+              <div className="text-sm font-medium text-neutral-900">Exclude techs</div>
+              <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                Techs selected here will be skipped during dispatch.
+              </p>
+              <div className="mt-3">
+                <MultiSelect
+                  values={excludeTechs}
+                  options={TECH_NAMES}
+                  onChange={onExcludeTechsChange}
+                  placeholder="Select techs"
+                  searchable
+                  searchPlaceholder="Search techs..."
+                  showChips
+                  triggerClassName="!max-w-none w-full max-w-none"
+                  menuMinWidth={280}
+                  dropdownClassName="w-[320px]"
+                />
+              </div>
+              {excludedTechsWarning ? (
+                <div className="mt-2 flex items-start gap-1.5 text-sm text-amber-700">
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0" strokeWidth={2} />
+                  <span>{excludedTechsWarning}</span>
+                </div>
+              ) : null}
+            </div>
           ) : null}
         </div>
     </div>
@@ -1450,63 +1574,56 @@ const AGENT_CONTEXT_FIELDS = [
 
 const RANKING_SIGNAL_DEFINITIONS = [
   {
-    id: "sla-risk",
-    name: "SLA risk",
-    description: "Tickets closer to breaching rank higher.",
-    enabled: true,
-    value: 25,
-  },
-  {
     id: "priority",
     name: "Priority",
     description: "Higher priority tickets rank first.",
     enabled: true,
-    value: 18,
+    value: 100,
   },
   {
     id: "ticket-age",
     name: "Ticket age",
-    description: "Older tickets rank higher when properties are equal.",
+    description: "Older tickets rank higher.",
     enabled: true,
-    value: 10,
+    value: 64,
   },
   {
     id: "client-replied",
     name: "Client replied",
     description: "Tickets with unanswered replies rank higher.",
     enabled: true,
-    value: 20,
+    value: 44,
   },
   {
     id: "sentiment",
     name: "Sentiment",
     description: "Tickets with negative client sentiment rank higher.",
     enabled: true,
-    value: 12,
-  },
-  {
-    id: "contact-type",
-    name: "Contact type",
-    description: "Tickets matching any selected type rank higher.",
-    enabled: true,
-    value: 8,
-    options: ["Standard", "VIP", "Executive"],
-    selectedOptions: ["Standard"],
-    multiSelect: true,
+    value: 25,
   },
   {
     id: "company-type",
     name: "Company type",
     description: "Tickets matching any selected company type rank higher.",
     enabled: true,
-    value: 7,
-    options: SCOPE_FILTER_METADATA["Company type"].values,
-    selectedOptions: ["Managed Service"],
+    value: 11,
+    options: COMPANY_TYPE_OPTIONS,
+    selectedOptions: [],
+    multiSelect: true,
+  },
+  {
+    id: "contact-type",
+    name: "Contact type",
+    description: "Tickets matching any selected contact type rank higher.",
+    enabled: true,
+    value: 0,
+    options: ["Standard", "VIP", "Executive"],
+    selectedOptions: [],
     multiSelect: true,
   },
   {
     id: "agreement-type",
-    name: "Agreement type",
+    name: "Agreement Type",
     description: "Tickets matching any selected agreement type rank higher.",
     enabled: true,
     value: 0,
@@ -1517,7 +1634,26 @@ const RANKING_SIGNAL_DEFINITIONS = [
       "Monitoring",
       "Time and materials",
     ],
-    selectedOptions: ["Block Time - One time"],
+    selectedOptions: [],
+    multiSelect: true,
+  },
+  {
+    id: "source",
+    name: "Source",
+    description: "Tickets from the selected sources rank higher.",
+    enabled: true,
+    value: 0,
+    options: [
+      "Attendant Phone",
+      "Automate",
+      "Chatgenie Messenger",
+      "Email",
+      "Internal",
+      "Overflow Phone",
+      "Phone",
+      "Thread Messenger",
+    ],
+    selectedOptions: [],
     multiSelect: true,
   },
 ];
@@ -1527,72 +1663,18 @@ function clampRankingWeight(value, fallback = 0) {
   return Number.isFinite(next) ? Math.max(0, Math.min(100, Math.round(next))) : fallback;
 }
 
-function getRankingWeightSharePercent(signalValue, totalWeight) {
-  if (totalWeight === 0) return 0;
-  return Math.round((signalValue / totalWeight) * 100);
-}
+const RANKING_LEVELS = [
+  { max: 0, label: "Not used" },
+  { max: 17, label: "Low" },
+  { max: 34, label: "Medium" },
+  { max: 54, label: "High" },
+  { max: 89, label: "Very high" },
+  { max: 100, label: "Highest" },
+];
 
-const RANKING_SIGNAL_SUMMARY_LABELS = {
-  "sla-risk": "SLA risk",
-  priority: "priority",
-  "ticket-age": "ticket age",
-  "client-replied": "client replies",
-  sentiment: "sentiment",
-  "contact-type": "contact type",
-  "company-type": "company type",
-  "agreement-type": "agreement type",
-};
-
-function getSignalSummaryLabel(signal) {
-  return RANKING_SIGNAL_SUMMARY_LABELS[signal.id] ?? signal.name.toLowerCase();
-}
-
-function RankingSignalSummaryLabel({ signal }) {
-  return <span className="font-semibold">{getSignalSummaryLabel(signal)}</span>;
-}
-
-function RankingSignalsSummary({ signals, totalWeight }) {
-  const active = signals
-    .filter((signal) => (Number(signal.value) || 0) > 0)
-    .map((signal) => ({
-      signal,
-      share: getRankingWeightSharePercent(signal.value, totalWeight),
-    }))
-    .sort((a, b) => b.share - a.share);
-
-  if (active.length === 0) {
-    return "No signals are currently influencing thread ranking.";
-  }
-
-  if (active.length === 1) {
-    return (
-      <>
-        Threads are ranked entirely by <RankingSignalSummaryLabel signal={active[0].signal} />.
-      </>
-    );
-  }
-
-  const shares = active.map((entry) => entry.share);
-  const maxShare = Math.max(...shares);
-  const minShare = Math.min(...shares);
-  if (maxShare - minShare <= 2) {
-    return "Signals are weighted roughly equally.";
-  }
-
-  const [first, second, third] = active;
-
-  return (
-    <>
-      Threads are primarily ranked by <RankingSignalSummaryLabel signal={first.signal} /> and{" "}
-      <RankingSignalSummaryLabel signal={second.signal} />
-      {third && second.share - third.share >= 2 ? (
-        <>
-          , with some weight on <RankingSignalSummaryLabel signal={third.signal} />
-        </>
-      ) : null}
-      .
-    </>
-  );
+function getRankingLevelLabel(value) {
+  const amount = Number(value) || 0;
+  return (RANKING_LEVELS.find((level) => amount <= level.max) ?? RANKING_LEVELS.at(-1)).label;
 }
 
 function mergeRankingSignalDefinition(definition, saved) {
@@ -1675,71 +1757,58 @@ function buildAgentInstructionsFromSignals(signals) {
 ${signalLines.join("\n")}`;
 }
 
-function RankingPropertyRow({
-  signal,
-  weightSharePercent,
-  onSetWeight,
-  onPatchSignal,
-  isLast,
-}) {
+function RankingPropertyRow({ signal, onSetWeight, onPatchSignal, isLast }) {
   const hasOptions = Array.isArray(signal.options) && signal.options.length > 0;
+  const unused = (Number(signal.value) || 0) === 0;
+  const selected = signal.selectedOptions ?? [];
 
   return (
     <div
-      className={`flex items-center gap-4 bg-white px-5 py-4 ${
-        isLast ? "rounded-b-lg" : "border-b border-neutral-200"
+      className={`flex items-center gap-6 px-5 py-4 ${
+        isLast ? "" : "border-b border-neutral-200"
       }`}
     >
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 ${unused ? "opacity-50" : ""}`}>
         <div className="flex items-center gap-2">
           <div className="text-sm font-medium text-neutral-900">{signal.name}</div>
           {hasOptions ? (
             <>
               <span className="text-sm text-neutral-500">is</span>
-              {signal.multiSelect ? (
-                <MultiSelect
-                  values={signal.selectedOptions ?? []}
-                  options={signal.options}
-                  onChange={(selectedOptions) =>
-                    onPatchSignal(signal.id, { selectedOptions })
-                  }
-                  placeholder="Select types"
-                  triggerClassName="!h-6 !min-h-6 !max-h-6 !py-0 max-w-[180px] px-2 text-xs"
-                  menuWidth={signal.id === "agreement-type" ? 300 : undefined}
-                  dropdownClassName={
-                    signal.id === "agreement-type" ? "min-w-[300px]" : "min-w-[180px]"
-                  }
-                />
-              ) : (
-                <Select
-                  value={signal.selectedOption}
-                  options={signal.options}
-                  onChange={(selectedOption) =>
-                    onPatchSignal(signal.id, { selectedOption })
-                  }
-                  triggerClassName="!h-6 !min-h-6 !max-h-6 !py-0 max-w-[180px] px-2 text-xs"
-                />
-              )}
+              <MultiSelect
+                values={selected}
+                options={signal.options}
+                onChange={(selectedOptions) => onPatchSignal(signal.id, { selectedOptions })}
+                placeholder="Select"
+                searchable
+                searchPlaceholder="Search"
+                summaryLabel={
+                  selected.length === 0
+                    ? undefined
+                    : selected.length === 1
+                      ? selected[0]
+                      : `${selected.length} selected`
+                }
+                menuMinWidth={signal.id === "agreement-type" ? 300 : 220}
+              />
             </>
           ) : null}
         </div>
-        <p className="mt-0.5 text-sm text-neutral-500">{signal.description}</p>
+        <p className="mt-0.5 text-[13px] text-neutral-500">{signal.description}</p>
       </div>
 
-      <div className="w-[200px] shrink-0">
-        <div className="mt-1 flex items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <Slider
-              min={0}
-              max={100}
-              step={1}
-              value={[signal.value]}
-              onValueChange={([value]) => onSetWeight(signal.id, value)}
-            />
-          </div>
-          <span className="shrink-0 text-right text-xs tabular-nums text-neutral-400">
-            {weightSharePercent}%
-          </span>
+      <div className="flex w-[260px] shrink-0 items-center gap-5">
+        <span className="w-[84px] shrink-0 text-right text-xs text-neutral-600">
+          {getRankingLevelLabel(signal.value)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <Slider
+            gradient
+            min={0}
+            max={100}
+            step={1}
+            value={[signal.value]}
+            onValueChange={([value]) => onSetWeight(signal.id, value)}
+          />
         </div>
       </div>
     </div>
@@ -1753,8 +1822,6 @@ const RANKING_SIGNALS_INFO_FOOTNOTE =
   "The defaults set work well for most teams.";
 
 function RankingSignalsSection({ signals, onChangeSignals }) {
-  const totalWeight = signals.reduce((sum, signal) => sum + (Number(signal.value) || 0), 0);
-
   const handleSetWeight = (signalId, value) => {
     const clamped = clampRankingWeight(value);
     onChangeSignals((prev) =>
@@ -1768,10 +1835,6 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
     onChangeSignals((prev) =>
       prev.map((signal) => (signal.id === signalId ? { ...signal, ...patch } : signal))
     );
-  };
-
-  const handleResetToDefault = () => {
-    onChangeSignals(normalizeRankingSignals([]));
   };
 
   return (
@@ -1801,29 +1864,18 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
           </Tooltip>
         </div>
         <p className="mt-0.5 text-sm text-neutral-500">
-          Set how much each signal influences ticket ranking. Signals set to 0 are excluded.
+          Set how much each signal influences ticket ranking. Signals set to &quot;Not used&quot; are excluded.
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-        <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
-          <p className="min-w-0 flex-1 text-sm text-neutral-500">
-            <RankingSignalsSummary signals={signals} totalWeight={totalWeight} />
-          </p>
-          <button
-            type="button"
-            onClick={handleResetToDefault}
-            className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700"
-          >
-            <RotateCcw size={14} aria-hidden />
-            Reset to default
-          </button>
+      <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+        <div className="border-b border-neutral-200 px-5 py-4 text-right text-sm font-medium text-neutral-500">
+          Importance
         </div>
         {signals.map((signal, index) => (
           <RankingPropertyRow
             key={signal.id}
             signal={signal}
-            weightSharePercent={getRankingWeightSharePercent(signal.value, totalWeight)}
             isLast={index === signals.length - 1}
             onSetWeight={handleSetWeight}
             onPatchSignal={handlePatchSignal}
@@ -1911,7 +1963,6 @@ function Sidebar({ active = "Auto-dispatch", onSelect }) {
       label: "Magic AI",
       items: [
         { icon: Sparkles, label: "Assistive AI" },
-        { icon: LayoutGrid, label: "Auto-dispatch" },
         { icon: Wand2, label: "Magic Agents" },
         { icon: Target, label: "Intelligence" },
       ],
@@ -1919,12 +1970,13 @@ function Sidebar({ active = "Auto-dispatch", onSelect }) {
     {
       label: "Automation",
       items: [
-        { icon: Workflow, label: "Status automation" },
+        { icon: Shuffle, label: "Status Mapping" },
         { icon: CheckSquare, label: "Flows" },
+        { icon: Clock, label: "Auto-dispatch" },
       ],
     },
     {
-      label: "Messenger",
+      label: "Communication",
       items: [
         { icon: MessageSquare, label: "Messenger" },
         { icon: Phone, label: "Voice" },
@@ -1935,11 +1987,11 @@ function Sidebar({ active = "Auto-dispatch", onSelect }) {
       label: "General",
       items: [
         { icon: Settings, label: "Workspace" },
-        { icon: FileText, label: "SLAs" },
-        { icon: Target, label: "Plans & licenses" },
-        { icon: Users, label: "Members" },
+        { icon: CalendarDays, label: "Work schedules" },
+        { icon: Clock, label: "XLAs", id: "SLAs" },
+        { icon: User, label: "Members" },
         { icon: Plug, label: "Integrations" },
-        { icon: ShieldCheck, label: "Security center" },
+        { icon: ShieldCheck, label: "Security Center" },
         { icon: Activity, label: "Analytics" },
         { icon: Wallet, label: "Partner value" },
         { icon: Star, label: "Feedback" },
@@ -1955,16 +2007,15 @@ function Sidebar({ active = "Auto-dispatch", onSelect }) {
         </div>
         <div>
           <div className="text-sm font-semibold text-neutral-900">ACME</div>
-          <div className="text-[11px] text-neutral-400 flex items-center gap-0.5">
-            Workspace <ChevronDown size={10} />
-          </div>
+          <div className="text-[11px] text-neutral-400">Ricky&apos;s Organization</div>
         </div>
+        <ChevronDown size={12} className="ml-auto text-neutral-400" />
       </div>
 
       <div className="px-3 pb-2">
         <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm text-neutral-600 hover:bg-neutral-50 cursor-pointer">
           <Zap size={15} />
-          <span>Get Started</span>
+          <span>Get started</span>
         </div>
       </div>
 
@@ -1975,14 +2026,14 @@ function Sidebar({ active = "Auto-dispatch", onSelect }) {
               {g.label}
             </div>
             <div className="space-y-0.5">
-              {g.items.map(({ icon: Icon, label }) => {
-                const navigable = NAVIGABLE_ITEMS.has(label);
+              {g.items.map(({ icon: Icon, label, id = label }) => {
+                const navigable = NAVIGABLE_ITEMS.has(id);
                 return (
                   <div
                     key={label}
-                    onClick={() => navigable && onSelect?.(label)}
+                    onClick={() => navigable && onSelect?.(id)}
                     className={`flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm ${
-                      active === label
+                      active === id
                         ? "bg-[rgba(229,228,224,0.55)] text-neutral-900 font-medium"
                         : "text-neutral-600 hover:bg-[rgba(229,228,224,0.55)]"
                     } ${navigable ? "cursor-pointer" : "cursor-default"}`}
@@ -1995,6 +2046,29 @@ function Sidebar({ active = "Auto-dispatch", onSelect }) {
             </div>
           </div>
         ))}
+        <div className="mb-5">
+          <div className="flex items-center justify-between px-3 mb-1.5 text-[11px] font-semibold tracking-wider text-neutral-400 uppercase">
+            <span className="inline-flex items-center gap-1">
+              Your teams <ChevronDown size={11} />
+            </span>
+            <Plus size={13} />
+          </div>
+          <div className="space-y-0.5">
+            {["Team A", "Team A - L1"].map((team) => (
+              <div
+                key={team}
+                className="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm text-neutral-600 cursor-default"
+              >
+                <Users size={15} className="shrink-0" />
+                <span>{team}</span>
+              </div>
+            ))}
+            <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm text-neutral-600 cursor-default">
+              <Plus size={15} className="shrink-0" />
+              <span>Create new team</span>
+            </div>
+          </div>
+        </div>
       </nav>
 
       <div className="px-3 py-3 border-t border-neutral-100 flex items-center justify-between text-sm text-neutral-500">
@@ -2002,9 +2076,12 @@ function Sidebar({ active = "Auto-dispatch", onSelect }) {
           <Inbox size={15} />
           <span>Inbox</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <HelpCircle size={15} />
-          <span>Help</span>
+        <div className="flex items-center gap-1">
+          <span className="relative inline-flex h-7 w-7 items-center justify-center rounded-md bg-neutral-200/70 text-[11px] font-semibold text-neutral-700">
+            RB
+            <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-orange-500" />
+          </span>
+          <ChevronDown size={13} />
         </div>
       </div>
     </aside>
@@ -2040,7 +2117,7 @@ function AgentCard({
     lastSavedAt && !Number.isNaN(lastSavedAt.getTime()) ? formatLastSaved(lastSavedAt) : null;
 
   return (
-    <div className="bg-white border border-neutral-200 rounded-xl overflow-visible">
+    <div className="bg-white border border-neutral-200 rounded-xl overflow-visible shadow-sm">
       {/* Top row: icon, title, toggle (no row hover — open agent from configuration strip or ⋯) */}
       <div className="flex items-center gap-4 px-5 py-4 rounded-t-xl">
         <div
@@ -2148,19 +2225,19 @@ function AgentListPage({
 
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#FAF9F6]">
-      <header className="shrink-0 border-b border-neutral-200 bg-white px-8 py-4">
-        <h1 className="text-lg font-semibold text-neutral-900">Assistive AI</h1>
+      <header className="shrink-0 bg-white px-8 py-4 shadow-[0_1px_4px_rgba(0,0,0,0.08)] relative z-10">
+        <h1 className="text-xl font-normal text-neutral-900">Auto-dispatch</h1>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl px-8 py-12">
         <div className="flex flex-col items-center text-center mb-10">
           <div className="w-10 h-10 rounded-md bg-emerald-100 flex items-center justify-center mb-4">
-            <LayoutGrid size={20} className="text-emerald-600" />
+            <ListChecks size={20} className="text-emerald-600" />
           </div>
           <h2 className="text-xl font-semibold text-neutral-900">Auto-dispatch</h2>
           <p className="text-sm text-neutral-500 mt-2 max-w-lg leading-relaxed">
-            Automatically assign incoming tickets to the right person on each team.
+            Set up auto-dispatch to automatically assign tickets to your team, or build a prioritized queue that people can pull from.
           </p>
           {!isEmpty && (
             <button
@@ -2168,7 +2245,7 @@ function AgentListPage({
               className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm mt-5"
             >
               <Plus size={15} />
-              Create Agent
+              Create dispatcher
             </button>
           )}
         </div>
@@ -2177,17 +2254,17 @@ function AgentListPage({
           {isEmpty ? (
             <div className="border border-dashed border-[#00BB99] rounded-xl bg-transparent py-14 px-6 flex flex-col items-center">
               <div className="text-[14px] font-semibold text-neutral-900">
-                Configure your first dispatch agent
+                No dispatching configured
               </div>
               <p className="text-sm text-neutral-500 mt-1.5 mb-6 max-w-sm text-center">
-                Create an agent to start automatically assigning tickets to your team.
+                Set up your first dispatcher and start assigning tickets to your team.
               </p>
               <button
                 onClick={onCreate}
                 className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm transition-colors"
               >
                 <Plus size={15} />
-                Create agent
+                Create dispatcher
               </button>
             </div>
           ) : (
@@ -2226,13 +2303,17 @@ function ConfigPage({
   const isRoute = mode === "Route";
   const isSchedule = mode === "Assign + Schedule";
 
-  const defaultNewAgentTitle = isRoute ? "New routing agent" : `New ${mode.toLowerCase()} agent`;
 
-  // --- Agent identity
+  // --- Dispatcher identity
   const [agentDisplayName, setAgentDisplayName] = useState(initialAgent?.name ?? "");
   const [avatarId, setAvatarId] = useState(initialAgent?.avatarId ?? "avatar-1");
-  const [dispatchMode, setDispatchMode] = useState(initialAgent?.dispatchMode ?? "Auto-assign");
+  const [dispatchMode, setDispatchMode] = useState(() => {
+    const saved = initialAgent?.dispatchMode;
+    if (saved === "Self-serve") return "Next thread";
+    return saved ?? "Auto-assign";
+  });
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [flowsConflictBannerDismissed, setFlowsConflictBannerDismissed] = useState(false);
   const TEST_PANEL_MIN_WIDTH = 320;
   const TEST_PANEL_MAX_WIDTH = 720;
   const [testPanelOpen, setTestPanelOpen] = useState(false);
@@ -2285,7 +2366,7 @@ function ConfigPage({
   }, [avatarPickerOpen]);
 
   // --- Agent scope
-  const [active, setActive] = useState(initialAgent?.active ?? true);
+  const [active, setActive] = useState(initialAgent?.active ?? false);
   const [boards, setBoards] = useState(
     normalizeSelections(initialAgent?.boards ?? initialAgent?.board)
   );
@@ -2341,19 +2422,19 @@ function ConfigPage({
   const [duration, setDuration] = useState("30 min");
 
   // --- Technician assignment (Auto-assign)
+  const [noTechAction, setNoTechAction] = useState("Retry assignment");
+  const [boardExtraStatuses, setBoardExtraStatuses] = useState({});
+  const [boardFallbackStatuses, setBoardFallbackStatuses] = useState({});
+  const [scheduleNoticeAmount, setScheduleNoticeAmount] = useState("1");
+  const [scheduleNoticeUnit, setScheduleNoticeUnit] = useState("hours");
+  const [bookingDurationAmount, setBookingDurationAmount] = useState("30");
+  const [bookingDurationUnit, setBookingDurationUnit] = useState("minutes");
   const [maxActiveThreads, setMaxActiveThreads] = useState(
     initialAgent?.maxActiveThreads ?? "No limit"
   );
-  const [maxActiveThreadsStatuses, setMaxActiveThreadsStatuses] = useState(() => {
-    const saved = initialAgent?.maxActiveThreadsStatuses ?? initialAgent?.maxActiveThreadsStatus;
-    if (Array.isArray(saved)) {
-      return saved.filter(Boolean);
-    }
-    if (typeof saved === "string" && saved) {
-      return [saved];
-    }
-    return ["In Progress"];
-  });
+  const [excludeTechs, setExcludeTechs] = useState(() =>
+    normalizeSelections(initialAgent?.excludeTechs)
+  );
   const [calendarAvailabilityEnabled, setCalendarAvailabilityEnabled] = useState(() => {
     const agent = initialAgent;
     if (!agent) return false;
@@ -2564,18 +2645,20 @@ function ConfigPage({
       teamScopes: isRoute ? undefined : teamScopes,
       dispatchMode: isRoute ? undefined : dispatchMode,
       maxActiveThreads: isRoute ? undefined : maxActiveThreads,
-      maxActiveThreadsStatuses: isRoute ? undefined : maxActiveThreadsStatuses,
+      maxActiveThreadsStatuses: isRoute
+        ? undefined
+        : Array.from(new Set(Object.values(boardExtraStatuses).flat())),
       calendarAvailabilityEnabled: isRoute ? undefined : calendarAvailabilityEnabled,
       calendarAvailability: isRoute
         ? undefined
         : calendarAvailabilityEnabled
           ? "Today and tomorrow"
           : "Ignore",
-      excludeTechs: [],
-      excludeTechsEnabled: false,
-      skipFlowAssignedTickets: primaryScope?.skipFlowAssignedTickets ?? false,
+      excludeTechs,
+      excludeTechsEnabled: excludeTechs.length > 0,
+      skipFlowAssignedTickets: false,
       fallbackStatus:
-        isRoute || dispatchMode !== "Auto-assign"
+        isRoute || dispatchMode !== "Auto-assign" || noTechAction === "Retry assignment"
           ? "No change"
           : primaryScope?.fallbackStatus ?? "Escalation",
       destinations: isRoute ? rules.map((r) => r.board).filter(Boolean) : [],
@@ -2595,13 +2678,9 @@ function ConfigPage({
     });
   };
 
-  const headerTitle =
-    agentDisplayName.trim() ||
-    (initialAgent?.name ?? defaultNewAgentTitle);
-
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#FAF9F6]">
-      <header className="relative z-20 flex shrink-0 items-center justify-between border-b border-neutral-200 bg-white px-6 py-3.5">
+      <header className="relative z-20 flex shrink-0 items-center justify-between bg-white px-6 py-3.5 shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
         <div className="flex min-w-0 items-center gap-3">
           <button
             onClick={onBack}
@@ -2609,8 +2688,8 @@ function ConfigPage({
           >
             <ArrowLeft size={18} />
           </button>
-          <h1 className="truncate text-base font-semibold text-neutral-900">
-            {headerTitle}
+          <h1 className="truncate text-xl font-normal text-neutral-900">
+            Configure auto-dispatch
           </h1>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -2620,11 +2699,15 @@ function ConfigPage({
             aria-expanded={testPanelOpen}
             className={`inline-flex items-center gap-1.5 rounded-md border px-4 py-1.5 text-sm font-medium transition-colors ${
               testPanelOpen
-                ? "border-neutral-300 bg-neutral-100 text-neutral-900"
-                : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
+                ? "border-[#00BB99] bg-white text-[#00BB99]"
+                : "border-[#00BB99] bg-white text-[#00BB99] hover:bg-teal-50"
             }`}
           >
-            <Play size={14} className="text-neutral-500" aria-hidden />
+            <Play
+              size={14}
+              className="text-[#00BB99]"
+              aria-hidden
+            />
             Test run
           </button>
           <Switch checked={active} onCheckedChange={setActive} />
@@ -2640,7 +2723,7 @@ function ConfigPage({
             <div className="mb-3">
               <h2 className="text-base font-semibold text-neutral-900">Auto dispatch mode</h2>
             </div>
-            <div className="rounded-lg border border-neutral-200 bg-white p-4">
+            <div className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <button
                   type="button"
@@ -2664,21 +2747,21 @@ function ConfigPage({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDispatchMode("Self-serve")}
+                  onClick={() => setDispatchMode("Next thread")}
                   className={`flex w-full items-center gap-3 rounded-lg border px-4 py-4 text-left transition-colors ${
-                    dispatchMode === "Self-serve"
+                    dispatchMode === "Next thread"
                       ? "border-teal-500"
                       : "border-neutral-200 hover:border-neutral-300"
                   }`}
                 >
                   <ListOrdered size={18} className="shrink-0 text-neutral-400" strokeWidth={1.75} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-neutral-900">Self-serve</div>
+                    <div className="text-sm font-semibold text-neutral-900">Next thread</div>
                     <p className="mt-0.5 text-sm text-neutral-500">
                       Techs request threads when ready
                     </p>
                   </div>
-                  {dispatchMode === "Self-serve" ? (
+                  {dispatchMode === "Next thread" ? (
                     <Check size={16} className="shrink-0 text-teal-600" strokeWidth={2.5} />
                   ) : null}
                 </button>
@@ -2687,10 +2770,10 @@ function ConfigPage({
           </div>
         )}
 
-        <Section title="Agent identity">
+        <Section title="Dispatcher identity">
           <Row
-            label="Name your agent"
-            subcopy="How your team identifies this agent"
+            label="Name your dispatcher"
+            subcopy="Helps identify the dispatcher once it's set up"
           >
             <input
               type="text"
@@ -2701,8 +2784,8 @@ function ConfigPage({
             />
           </Row>
           <Row
-            label="Agent's avatar"
-            subcopy="To help set your agents apart"
+            label="Avatar"
+            subcopy="Helps identify the dispatcher once it's set up"
             noBorder
           >
             <div className="relative" ref={avatarPickerWrapRef}>
@@ -2712,7 +2795,7 @@ function ConfigPage({
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white p-0.5 transition-colors hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 aria-expanded={avatarPickerOpen}
                 aria-haspopup="listbox"
-                aria-label="Choose agent avatar"
+                aria-label="Choose dispatcher avatar"
               >
                 <span
                   className={`h-6 w-6 shrink-0 rounded-full ${avatarSwatchClass(avatarId)}`}
@@ -2808,19 +2891,40 @@ function ConfigPage({
               <h2 className="text-base font-semibold text-neutral-900">
                 Dispatch scope
               </h2>
-              <p className="text-sm text-neutral-500 mt-0.5">
-                {dispatchMode === "Self-serve"
-                  ? "Use multiple sections when teams share the same ranking logic."
-                  : "Use multiple sections when teams share the same dispatch logic."}
-              </p>
             </div>
+            {dispatchMode === "Auto-assign" && !flowsConflictBannerDismissed ? (
+              <div className="mb-3 flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                <Info size={16} className="shrink-0 text-blue-600" aria-hidden />
+                <p className="min-w-0 flex-1 text-sm text-blue-900">
+                  Auto-assign may conflict with Flows that assign members.
+                </p>
+                <a
+                  href="#"
+                  className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-blue-700 hover:text-blue-800"
+                  onClick={(event) => event.preventDefault()}
+                >
+                  Open Flows
+                  <ArrowUpRight size={12} strokeWidth={2.25} aria-hidden />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setFlowsConflictBannerDismissed(true)}
+                  className="shrink-0 rounded p-0.5 text-blue-500 hover:bg-blue-100 hover:text-blue-700"
+                  aria-label="Dismiss"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : null}
             <div className="space-y-3">
               {teamScopes.map((scope) => (
                 <AgentScopeTeamCard
                   key={scope.id}
                   scope={scope}
                   disabledTeamClaims={disabledTeamClaimsByScopeId[scope.id] ?? {}}
-                  showFallbackStatus={dispatchMode === "Auto-assign"}
+                  showExcludeTechs={dispatchMode === "Auto-assign"}
+                  excludeTechs={excludeTechs}
+                  onExcludeTechsChange={setExcludeTechs}
                   onRemove={
                     teamScopes.length > 1 ? () => removeTeamScope(scope.id) : undefined
                   }
@@ -2828,26 +2932,6 @@ function ConfigPage({
                 />
               ))}
             </div>
-            {teamScopes[0] && dispatchMode === "Auto-assign" ? (
-              <div className="mt-3 rounded-lg border border-neutral-200 bg-white">
-                <Row
-                  label="Skip tickets assigned by Flows"
-                  subcopy="When enabled, auto dispatch will skip tickets that are already being assigned by a Flow."
-                  noBorder
-                  align="center"
-                >
-                  <div className="inline-flex shrink-0 items-center">
-                    <Switch
-                      size="sm"
-                      checked={teamScopes[0].skipFlowAssignedTickets}
-                      onCheckedChange={(skipFlowAssignedTickets) =>
-                        updateTeamScope(teamScopes[0].id, { skipFlowAssignedTickets })
-                      }
-                    />
-                  </div>
-                </Row>
-              </div>
-            ) : null}
           </div>
         )}
 
@@ -2879,7 +2963,7 @@ function ConfigPage({
                 return (
                   <div
                     key={rule.id}
-                    className={`bg-white border rounded-lg ${
+                    className={`bg-white border rounded-lg shadow-sm ${
                       error ? "border-red-300" : "border-neutral-200"
                     }`}
                   >
@@ -3025,69 +3109,204 @@ function ConfigPage({
         {/* Technician assignment — Auto-assign only */}
         {!isRoute && dispatchMode === "Auto-assign" && (
           <>
-            <Section
+<Section
               title="Technician assignment"
-              subcopy="Define how the agent selects the right technician for each thread."
+              subcopy="Define how threads are assigned to technicians."
             >
-              <div className="flex items-start justify-between gap-6 border-b border-neutral-100 px-5 py-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-medium text-neutral-900">Max threads</div>
-                    <span className="text-sm text-neutral-500">in</span>
-                    <MultiSelect
-                      values={maxActiveThreadsStatuses}
-                      options={DISPATCH_STATUS_OPTIONS}
-                      onChange={setMaxActiveThreadsStatuses}
-                      placeholder="Select status"
-                      triggerClassName="!h-6 !min-h-6 !max-h-6 !py-0 max-w-[180px] px-2 text-xs"
-                      menuMinWidth={260}
-                      dropdownClassName="min-w-[260px]"
-                    />
+              <div className="border-b border-neutral-100 px-5 py-4">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-neutral-900">
+                      Max active threads
+                    </div>
+                    <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                      A tech is at capacity once their active threads reach this number. That
+                      includes assigned threads still in a dispatch status, plus any statuses you
+                      add below.
+                    </p>
                   </div>
-                  <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                    Maximum active tickets before the agent skips this tech.
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
                   <Select
                     value={maxActiveThreads}
-                    options={["No limit", "5", "10", "15", "20"]}
+                    options={MAX_ACTIVE_THREADS_OPTIONS}
                     onChange={setMaxActiveThreads}
+                    menuMinWidth={SCOPE_DROPDOWN_MIN_WIDTH}
                   />
                 </div>
+                {scopeViews.length > 0 ? (
+                  <ScopeNestedGroup>
+                    {scopeViews.map((board) => {
+                      const lockedStatuses = normalizeSelections(
+                        teamScopes[0]?.boardStatuses?.[board]
+                      );
+                      const extraStatuses = (boardExtraStatuses[board] ?? []).filter(
+                        (status) => !lockedStatuses.includes(status)
+                      );
+                      const selectedStatuses = [...lockedStatuses, ...extraStatuses];
+                      return (
+                        <div key={board} className="flex items-start justify-between gap-6">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-neutral-900">{board}</div>
+                            <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                              Statuses that count toward a tech&apos;s active thread limit on this
+                              board.
+                            </p>
+                          </div>
+                          <MultiSelect
+                            values={selectedStatuses}
+                            lockedValues={lockedStatuses}
+                            options={getBoardStatusOptions(board)}
+                            onChange={(next) =>
+                              setBoardExtraStatuses((prev) => ({
+                                ...prev,
+                                [board]: next.filter((status) => !lockedStatuses.includes(status)),
+                              }))
+                            }
+                            placeholder="Select status"
+                            searchable
+                            searchPlaceholder="Search statuses"
+                            summaryLabel={
+                              selectedStatuses.length === 0
+                                ? undefined
+                                : selectedStatuses.length === 1
+                                  ? selectedStatuses[0]
+                                  : `${selectedStatuses.length} selected`
+                            }
+                            menuMinWidth={SCOPE_DROPDOWN_MIN_WIDTH}
+                          />
+                        </div>
+                      );
+                    })}
+                  </ScopeNestedGroup>
+                ) : null}
               </div>
-              <Row
-                label="Calendar availability"
-                subcopy={
-                  <>
-                    Check Planner for open time before assigning a tech.{" "}
-                    <a
-                      href="#"
-                      className="inline-flex items-center gap-0.5 text-[#00BB99] hover:text-[#00967A]"
-                      onClick={(event) => event.preventDefault()}
-                    >
-                      Connect to Outlook
-                      <ArrowUpRight className="size-3.5 shrink-0" strokeWidth={2.25} />
-                    </a>
-                  </>
-                }
-                align="center"
-                noBorder
-              >
-                <div className="inline-flex shrink-0 items-center">
+              <div className="border-b border-neutral-100 px-5 py-4">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-neutral-900">
+                      Action when no tech is eligible
+                    </div>
+                    <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                      {noTechAction === "Retry assignment"
+                        ? "Retries every minute, prioritizing threads by highest priority and oldest"
+                        : "Changes the thread status when no one is eligible"}
+                    </p>
+                  </div>
+                  <Select
+                    value={noTechAction}
+                    options={["Retry assignment", "Apply a status change"]}
+                    onChange={setNoTechAction}
+                  />
+                </div>
+                {noTechAction === "Apply a status change" && scopeViews.length > 0 ? (
+                  <ScopeNestedGroup>
+                    {scopeViews.map((board) => {
+                      const fallback = boardFallbackStatuses[board] ?? "";
+                      return (
+                        <div key={board} className="flex items-start justify-between gap-6">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-neutral-900">{board}</div>
+                            <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                              Select the status threads will move to on this board.
+                            </p>
+                            {!fallback ? (
+                              <p className="mt-1 flex items-center gap-1.5 text-sm text-red-800">
+                                <AlertTriangle size={14} strokeWidth={2} aria-hidden />
+                                Select a fallback status.
+                              </p>
+                            ) : null}
+                          </div>
+                          <Select
+                            value={fallback}
+                            options={getBoardFallbackStatusOptions(board)}
+                            onChange={(status) => {
+                              setBoardFallbackStatuses((prev) => ({ ...prev, [board]: status }));
+                              if (board === scopeViews[0]) {
+                                updateTeamScope(teamScopes[0].id, { fallbackStatus: status });
+                              }
+                            }}
+                            placeholder="Select status"
+                            menuMinWidth={SCOPE_DROPDOWN_MIN_WIDTH}
+                          />
+                        </div>
+                      );
+                    })}
+                  </ScopeNestedGroup>
+                ) : null}
+              </div>
+              <div className="px-5 py-4">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-neutral-900">Enable scheduling</div>
+                    <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                      Automatically picks an open time on the assigned member&apos;s Planner.
+                    </p>
+                  </div>
                   <Switch
-                    size="sm"
                     checked={calendarAvailabilityEnabled}
                     onCheckedChange={setCalendarAvailabilityEnabled}
                   />
                 </div>
-              </Row>
+                {calendarAvailabilityEnabled ? (
+                  <ScopeNestedGroup>
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-900">
+                      <span>Schedule with at least</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={scheduleNoticeAmount}
+                        onChange={(e) => setScheduleNoticeAmount(e.target.value)}
+                        className="w-28 rounded-md border border-neutral-200 px-3 py-1.5 text-sm text-neutral-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                      <Select
+                        value={scheduleNoticeUnit}
+                        options={["minutes", "hours"]}
+                        onChange={setScheduleNoticeUnit}
+                        menuMinWidth={140}
+                      />
+                      <span>notice.</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-900">
+                      <span>Default booking duration</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={bookingDurationAmount}
+                        onChange={(e) => setBookingDurationAmount(e.target.value)}
+                        className="w-28 rounded-md border border-neutral-200 px-3 py-1.5 text-sm text-neutral-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                      <Select
+                        value={bookingDurationUnit}
+                        options={["minutes", "hours"]}
+                        onChange={setBookingDurationUnit}
+                        menuMinWidth={140}
+                      />
+                    </div>
+                  </ScopeNestedGroup>
+                ) : null}
+              </div>
+            </Section>
+
+            <Section title="Status automation">
+              <div className="px-5 py-4">
+                <p className="text-sm text-neutral-700">
+                  Automatically update a thread&apos;s status when it&apos;s assigned via
+                  Auto-dispatch.
+                </p>
+                <a
+                  href="#"
+                  className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-[#00BB99] hover:text-[#00967A]"
+                  onClick={(event) => event.preventDefault()}
+                >
+                  Configure in Status Mapping
+                  <ArrowUpRight size={14} strokeWidth={2.25} aria-hidden />
+                </a>
+              </div>
             </Section>
           </>
         )}
 
-        {/* Thread scoring — Self-serve only */}
-        {!isRoute && dispatchMode === "Self-serve" && (
+        {/* Thread scoring — Next thread only */}
+        {!isRoute && dispatchMode === "Next thread" && (
           <RankingSignalsSection signals={rankingSignals} onChangeSignals={setRankingSignals} />
         )}
 
@@ -3099,13 +3318,8 @@ function ConfigPage({
             </div>
           )}
           <div className="flex w-full items-center justify-end gap-3">
-            {lastPublishedAt && dispatchMode !== "Self-serve" ? (
+            {lastPublishedAt ? (
               <span className="mr-auto text-xs text-neutral-400">
-                {formatLastPublished(lastPublishedAt)}
-              </span>
-            ) : null}
-            {lastPublishedAt && dispatchMode === "Self-serve" ? (
-              <span className="text-[13px] text-neutral-500">
                 {formatLastSaved(lastPublishedAt)}
               </span>
             ) : null}
@@ -3166,7 +3380,13 @@ function ConfigPage({
                 }
                 maxActiveThreads={maxActiveThreads}
                 calendarAvailabilityEnabled={calendarAvailabilityEnabled}
-                fallbackStatus={teamScopes[0]?.fallbackStatus || "Escalation"}
+                excludeTechs={excludeTechs}
+                fallbackStatus={
+                  noTechAction === "Retry assignment"
+                    ? "No change"
+                    : teamScopes[0]?.fallbackStatus || "Escalation"
+                }
+                onClose={() => setTestPanelOpen(false)}
               />
             </div>
           </aside>

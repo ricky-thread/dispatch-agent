@@ -237,16 +237,16 @@ export const DEFAULT_TEST_AGENT_SIGNALS = [
 
 /** Mock inbox team per thread for multi-team test agent ranking. */
 export const TEST_AGENT_THREAD_TEAMS = {
-  1234: "Team Alpha",
-  1237: "Team Alpha",
-  1240: "Team Alpha",
-  1241: "Team Alpha",
-  1244: "Team Alpha",
-  1236: "Team Beta",
-  1238: "Team Beta",
-  1239: "Team Beta",
-  1242: "Team Beta",
-  1243: "Team Beta",
+  1234: "Team A",
+  1237: "Team A",
+  1240: "Team A",
+  1241: "Team A",
+  1244: "Team A",
+  1236: "Team A - L1",
+  1238: "Team A - L1",
+  1239: "Team A - L1",
+  1242: "Team A - L1",
+  1243: "Team A - L1",
 };
 
 export function getTestAgentThreadTeam(threadId) {
@@ -336,6 +336,7 @@ function buildThreadFactors(thread, rankingSignals) {
       thread,
       getRankingSignalConfig(rankingSignals, "company-type")
     ),
+    source: { factor: 0, label: null },
     "agreement-type": getAgreementTypeSignal(
       thread,
       getRankingSignalConfig(rankingSignals, "agreement-type")

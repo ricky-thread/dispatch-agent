@@ -22,15 +22,28 @@ export const BOARDS = [
   "Triage",
 ];
 
-export const TEAMS = [
-  "Team Alpha",
-  "Team Beta",
-  "Team Charlie",
-  "Team Red",
-  "Team Blue",
-  "Team Green",
-  "Network Ops",
-  "Procurement",
+export const TEAMS = ["Team A", "Team A - L1"];
+
+/** Technicians available for exclude-techs selection (with team membership for warnings). */
+export const TECHS = [
+  { name: "Andrew Weston", teams: ["Team A", "Team A - L1"] },
+  { name: "Darren Case", teams: ["Team A"] },
+  { name: "Mia Lin", teams: ["Team A - L1", "Team Charlie"] },
+  { name: "Jordan Park", teams: ["Team Charlie"] },
+  { name: "Bobby Jacobs", teams: ["Team Red"] },
+  { name: "Matt Linn", teams: ["Team Blue"] },
+  { name: "Mark Alayev", teams: ["Team A"] },
+  { name: "Kristof Orts", teams: ["Network Ops"] },
+  { name: "Andre Queiroz", teams: ["Team A", "Team Green"] },
+  { name: "Nathan Ozelim", teams: ["Team A - L1"] },
+  { name: "Ismoil GetthreadMember", teams: ["Team Charlie"] },
+];
+
+export const TECH_NAMES = TECHS.map((tech) => tech.name);
+
+export const MAX_ACTIVE_THREADS_OPTIONS = [
+  "No limit",
+  ...Array.from({ length: 20 }, (_, i) => String(i + 1)),
 ];
 
 /** Status options for dispatch agent scope cards (global per scope). */
@@ -41,38 +54,41 @@ export const DISPATCH_STATUS_OPTIONS = [
   "Waiting Client Response",
   "On Hold",
   "Scheduled",
+  "Approved",
   "Escalate",
   "Triage",
 ];
 
+/** Status list shown for boards in production (dispatch status multiselect). */
+export const PRODUCTION_BOARD_STATUSES = [
+  ">Completed (QA)",
+  "Assigned",
+  "In Progress",
+  "New",
+  "On Hold",
+  "Re-Opened",
+  "Ready",
+  "Scheduled",
+];
+
 /** Status options available per dispatch board (scope cards). */
 export const BOARD_DISPATCH_STATUSES = {
-  "Help Desk": DISPATCH_STATUS_OPTIONS,
-  "Quick Fix": DISPATCH_STATUS_OPTIONS,
+  "Help Desk": PRODUCTION_BOARD_STATUSES,
   Network: ["New", "In Progress", "On Hold", "Escalation", "Escalate", "Triage", "Resolved"],
   Projects: ["New", "Planning", "In Progress", "On Hold", "Escalate", "Triage", "Completed"],
   Voice: ["New", "Ringing", "In Progress", "On Hold", "Escalate", "Triage", "Resolved"],
 };
 
 /** Emoji shown beside inbox team labels (agent scope, test agent). */
-export const TEAM_META = {
-  "Team Alpha": { emoji: "🛡️" },
-  "Team Beta": { emoji: "⚔️" },
-  "Team Charlie": { emoji: "🎖️" },
-  "Team Red": { emoji: "🔴" },
-  "Team Blue": { emoji: "🔵" },
-  "Team Green": { emoji: "🟢" },
-  "Network Ops": { emoji: "⚙️" },
-  Procurement: { emoji: "📦" },
-};
+export const TEAM_META = {};
 
 /** Inbox Team views (thread views) available per team for dispatch scope. */
 export const TEAM_VIEWS = {
-  "Team Alpha": [
+  "Team A": [
     "🧵 Needs dispatch view (Alpha)",
     "🧵 Open tickets (Alpha)",
   ],
-  "Team Beta": [
+  "Team A - L1": [
     "🧵 Needs dispatch view (Beta)",
     "🧵 Open tickets (Beta)",
   ],
@@ -366,8 +382,8 @@ export const HOUR_OPTIONS = generateHourOptions();
 export const SHARED_TICKET_VIEWS = new Set(["🧵 Needs dispatch view (Alpha)"]);
 
 export const TEAM_COLORS = {
-  "Team Alpha": "bg-red-500",
-  "Team Beta": "bg-neutral-600",
+  "Team A": "bg-red-500",
+  "Team A - L1": "bg-neutral-600",
   "Team Charlie": "bg-orange-500",
   "Team Red": "bg-red-500",
   "Team Blue": "bg-blue-500",

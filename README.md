@@ -49,14 +49,15 @@ All agent state lives in the top-level `App` component. Agents are stored in mem
   id: number,
   name: string,
   mode: "Route" | "Assign" | "Assign + Schedule",
-  dispatchMode: "Auto-assign" | "Self-serve",  // Assign modes only
+  dispatchMode: "Auto-assign" | "Next thread",  // Assign modes only
   board: string,
   boards: string[],
   team: string | null,
   teams: string[],
   teamScopes: object[],   // per-team scope, filters, and statuses
+  excludeTechs: string[], // Auto-assign only
   routeRules: object[],   // Route mode only
-  rankingSignals: object[], // Self-serve mode only
+  rankingSignals: object[], // Next thread mode only
   active: boolean,
 }
 ```
@@ -73,3 +74,4 @@ All agent state lives in the top-level `App` component. Agents are stored in mem
 - Sidebar items other than the three main sections are non-functional
 - "Coming soon" features (e.g. Booking link) are visible but non-functional
 - Working hours subtitle on agent cards is hardcoded
+- Status Mapping link is non-functional (opens nowhere)

@@ -2,24 +2,26 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ClipboardList,
-  ListOrdered,
   Search,
   ThumbsDown,
   ThumbsUp,
+  UserRoundCheck,
   X,
 } from "lucide-react";
 import { TeamLabel } from "../TeamIcon";
-import ThreadCard, { PreviewThreadRow } from "../ThreadCard";
-import RecommendationCard from "./RecommendationCard";
+import TeamIcon from "../TeamIcon";
+import { PersonAvatar, PreviewThreadRow } from "../ThreadCard";
 import {
   MAX_TEST_THREADS,
-  computeTestAgentRanking,
   TEST_AGENT_THREADS,
   getTestAgentThread,
   groupThreadIdsByTeam,
   sortThreadsByRanking,
 } from "./testAgentThreads";
-import { computeTechnicianRecommendations } from "./testAgentTechnicians";
+import {
+  computeDispatchEligibility,
+  formatWorkloadLabel,
+} from "./testAgentTechnicians";
 
 const FEEDBACK_SUBMIT_DELAY_MS = 900;
 const SHOW_FEEDBACK_BANNER = false;
@@ -145,51 +147,197 @@ function TestAgentFeedbackModal({
   );
 }
 
-function ThreadCardList({
-  threads,
-  hasRunTest,
-  rankingById,
-  onRemoveThread,
-}) {
+function TechTeamMeta({ teams = [] }) {
+  if (!teams.length) return null;
   return (
-    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-      {threads.map((thread) => {
-        const ranking = hasRunTest ? rankingById?.[thread.id] : undefined;
-
-        return (
-          <ThreadCard
-            key={thread.id}
-            thread={thread}
-            ranking={ranking}
-            onRemove={onRemoveThread}
-          />
-        );
-      })}
+    <div className="mt-1 space-y-0.5">
+      {teams.map((team) => (
+        <div
+          key={team}
+          className="flex min-w-0 items-center gap-1.5 text-[13px] text-neutral-500"
+        >
+          <TeamIcon team={team} />
+          <span className="truncate">{team}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
-function RecommendationCardList({
-  recommendations,
-  fallbackStatus,
-  onRemoveThread,
-}) {
+function TechWorkloadFooter({ reason, label }) {
+  const toneClass =
+    reason === "at_capacity"
+      ? "bg-rose-50 text-rose-800"
+      : reason === "unavailable"
+        ? "bg-amber-50 text-amber-900"
+        : "bg-emerald-50 text-emerald-800";
+
+  return (
+    <div className={`px-3.5 py-2 text-[13px] ${toneClass}`}>{label}</div>
+  );
+}
+
+function EligibleTechCard({ tech }) {
   return (
     <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-      {recommendations.map(({ threadId, technician }) => {
-        const thread = getTestAgentThread(threadId);
-        if (!thread) return null;
+      <div className="flex items-start gap-3 px-3.5 py-3">
+        <span className="mt-2 w-4 shrink-0 text-center text-sm tabular-nums text-neutral-500">
+          {tech.rank}
+        </span>
+        <PersonAvatar
+          initials={tech.initials}
+          colorClass={tech.colorClass}
+          size="lg"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-sm font-semibold text-neutral-900">
+              {tech.name}
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-[13px] text-neutral-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+              Available
+            </span>
+          </div>
+          <TechTeamMeta teams={tech.displayTeams} />
+        </div>
+      </div>
+      <TechWorkloadFooter
+        reason={null}
+        label={formatWorkloadLabel(tech, null)}
+      />
+    </div>
+  );
+}
 
-        return (
-          <RecommendationCard
-            key={threadId}
-            thread={thread}
-            recommendation={{ technician }}
-            fallbackStatus={fallbackStatus}
-            onRemove={onRemoveThread}
-          />
-        );
-      })}
+function IneligibleTechCard({ tech }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+      <div className="flex items-start gap-3 px-3.5 py-3">
+        <PersonAvatar
+          initials={tech.initials}
+          colorClass={tech.colorClass}
+          size="lg"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-sm font-semibold text-neutral-900">
+              {tech.name}
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-[13px] text-neutral-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-neutral-400" aria-hidden />
+              Unavailable
+            </span>
+          </div>
+          <TechTeamMeta teams={tech.displayTeams} />
+        </div>
+      </div>
+      <TechWorkloadFooter reason={tech.reason} label={tech.workloadLabel} />
+    </div>
+  );
+}
+
+function AutoAssignTestPanel({
+  configuredTeams = [],
+  excludeTechs = [],
+  maxActiveThreads = "10",
+  onClose,
+}) {
+  const [hasRunTest, setHasRunTest] = useState(false);
+
+  useEffect(() => {
+    setHasRunTest(false);
+  }, [configuredTeams, excludeTechs, maxActiveThreads]);
+
+  const results = useMemo(
+    () =>
+      hasRunTest
+        ? computeDispatchEligibility({
+            configuredTeams,
+            excludeTechs,
+            maxActiveThreads,
+          })
+        : null,
+    [configuredTeams, excludeTechs, hasRunTest, maxActiveThreads]
+  );
+
+  return (
+    <div className="flex h-full w-full flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
+        <h2 className="text-base font-semibold text-neutral-900">Test run</h2>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+            aria-label="Close test run"
+          >
+            <X size={16} />
+          </button>
+        ) : null}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+        {hasRunTest && results ? (
+          <div className="space-y-6">
+            <section>
+              <h3 className="mb-3 text-sm font-semibold text-neutral-900">
+                Eligible for dispatch
+              </h3>
+              {results.eligible.length > 0 ? (
+                <div className="space-y-3">
+                  {results.eligible.map((tech) => (
+                    <EligibleTechCard key={tech.id} tech={tech} />
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-lg border border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
+                  No techs are currently eligible for dispatch.
+                </p>
+              )}
+            </section>
+
+            <section>
+              <h3 className="mb-3 text-sm font-semibold text-neutral-900">
+                Not eligible for dispatch
+              </h3>
+              {results.notEligible.length > 0 ? (
+                <div className="space-y-3">
+                  {results.notEligible.map((tech) => (
+                    <IneligibleTechCard key={tech.id} tech={tech} />
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-lg border border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
+                  All selected-team techs are eligible.
+                </p>
+              )}
+            </section>
+          </div>
+        ) : (
+          <div className="flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white px-6 py-16 text-center">
+            <UserRoundCheck
+              size={36}
+              strokeWidth={1.5}
+              className="mb-4 text-neutral-400"
+              aria-hidden
+            />
+            <p className="max-w-[240px] text-sm leading-snug text-neutral-500">
+              Run a test to preview your team&apos;s dispatch order.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 border-t border-neutral-100 px-5 py-4">
+        <button
+          type="button"
+          onClick={() => setHasRunTest(true)}
+          className="w-full rounded-md bg-[#00BB99] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#00A888]"
+        >
+          Run test
+        </button>
+      </div>
     </div>
   );
 }
@@ -201,7 +349,39 @@ export default function TestAgentPanel({
   outputMode = "points",
   maxActiveThreads = "No limit",
   calendarAvailabilityEnabled = false,
-  fallbackStatus = "Escalation",
+  excludeTechs = [],
+  onClose,
+}) {
+  if (outputMode === "recommendation") {
+    return (
+      <AutoAssignTestPanel
+        configuredTeams={configuredTeams}
+        excludeTechs={excludeTechs}
+        maxActiveThreads={maxActiveThreads}
+        onClose={onClose}
+      />
+    );
+  }
+
+  return (
+    <NextThreadTestPanel
+      configuredTeams={configuredTeams}
+      agentInstructions={agentInstructions}
+      rankingSignals={rankingSignals}
+      maxActiveThreads={maxActiveThreads}
+      calendarAvailabilityEnabled={calendarAvailabilityEnabled}
+      onClose={onClose}
+    />
+  );
+}
+
+function NextThreadTestPanel({
+  configuredTeams = [],
+  agentInstructions = "",
+  rankingSignals = [],
+  maxActiveThreads = "No limit",
+  calendarAvailabilityEnabled = false,
+  onClose,
 }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -214,7 +394,6 @@ export default function TestAgentPanel({
   const searchWrapRef = useRef(null);
   const searchInputRef = useRef(null);
   const feedbackSubmitTimerRef = useRef(null);
-
   const resetFeedback = () => {
     if (feedbackSubmitTimerRef.current) {
       clearTimeout(feedbackSubmitTimerRef.current);
@@ -227,38 +406,15 @@ export default function TestAgentPanel({
   };
 
   const atMax = selectedIds.length >= MAX_TEST_THREADS;
-  const isRecommendationMode = outputMode === "recommendation";
   const minThreadsForRunTest = 1;
   const canRunTest = selectedIds.length >= minThreadsForRunTest;
 
   const groupByTeam = configuredTeams.length >= 2;
-  const recommendationOptions = useMemo(
-    () => ({
-      maxActiveThreads,
-      calendarAvailabilityEnabled,
-      rankingSignals,
-    }),
-    [calendarAvailabilityEnabled, maxActiveThreads, rankingSignals]
-  );
-  const rankingById = useMemo(
-    () =>
-      hasRunTest && !isRecommendationMode
-        ? computeTestAgentRanking(selectedIds, rankingSignals)
-        : {},
-    [hasRunTest, isRecommendationMode, rankingSignals, selectedIds]
-  );
-  const recommendations = useMemo(
-    () =>
-      hasRunTest && isRecommendationMode
-        ? computeTechnicianRecommendations(selectedIds, recommendationOptions)
-        : [],
-    [hasRunTest, isRecommendationMode, recommendationOptions, selectedIds]
-  );
 
   const displayedIds = useMemo(() => {
-    if (!hasRunTest || groupByTeam || isRecommendationMode) return selectedIds;
+    if (!hasRunTest || groupByTeam) return selectedIds;
     return sortThreadsByRanking(selectedIds, rankingSignals);
-  }, [selectedIds, hasRunTest, groupByTeam, isRecommendationMode, rankingSignals]);
+  }, [selectedIds, hasRunTest, groupByTeam, rankingSignals]);
 
   const displayedThreads = useMemo(
     () => displayedIds.map((id) => getTestAgentThread(id)).filter(Boolean),
@@ -268,7 +424,7 @@ export default function TestAgentPanel({
   const teamSections = useMemo(() => {
     if (!groupByTeam) return null;
     return groupThreadIdsByTeam(selectedIds, configuredTeams, {
-      sortByRanking: hasRunTest && !isRecommendationMode,
+      sortByRanking: hasRunTest,
       rankingSignals,
     }).map((section) => ({
       team: section.team,
@@ -281,21 +437,9 @@ export default function TestAgentPanel({
     configuredTeams,
     groupByTeam,
     hasRunTest,
-    isRecommendationMode,
     rankingSignals,
     selectedIds,
   ]);
-
-  const teamRecommendationSections = useMemo(() => {
-    if (!hasRunTest || !isRecommendationMode || !teamSections) return null;
-    return teamSections.map((section) => ({
-      team: section.team,
-      recommendations: computeTechnicianRecommendations(
-        section.threadIds,
-        recommendationOptions
-      ),
-    }));
-  }, [hasRunTest, isRecommendationMode, recommendationOptions, teamSections]);
 
   const teamGroupedThreadCount = useMemo(
     () =>
@@ -324,14 +468,6 @@ export default function TestAgentPanel({
       );
     });
   }, [searchQuery]);
-
-  const firstSelectableIndex = useMemo(
-    () =>
-      filteredThreads.findIndex(
-        (candidate) => !selectedIds.includes(candidate.id)
-      ),
-    [filteredThreads, selectedIds]
-  );
 
   useEffect(() => {
     if (!searchOpen) return undefined;
@@ -377,12 +513,7 @@ export default function TestAgentPanel({
     setFeedbackModalOpen(false);
     setFeedbackSubmitting(false);
     setFeedbackDismissed(false);
-  }, [
-    agentInstructions,
-    calendarAvailabilityEnabled,
-    maxActiveThreads,
-    outputMode,
-  ]);
+  }, [agentInstructions, calendarAvailabilityEnabled, maxActiveThreads]);
 
   const handleSelectThread = (threadId) => {
     if (selectedIds.includes(threadId)) return;
@@ -406,14 +537,6 @@ export default function TestAgentPanel({
     if (!canRunTest) return;
     void draftInstructionsRef.current;
     setHasRunTest(true);
-    resetFeedback();
-  };
-
-  const handleClearAll = () => {
-    setSelectedIds([]);
-    setSearchQuery("");
-    setSearchOpen(false);
-    setHasRunTest(false);
     resetFeedback();
   };
 
@@ -446,92 +569,28 @@ export default function TestAgentPanel({
     }, FEEDBACK_SUBMIT_DELAY_MS);
   };
 
-  const rankedResultsHeader = isRecommendationMode
-    ? "Dispatcher's recommendation"
-    : "Weight-based ranking.";
-
   const showFeedbackBanner =
     SHOW_FEEDBACK_BANNER &&
-    isRecommendationMode &&
     hasRunTest &&
     displayedThreads.length > 0 &&
     !feedbackDismissed;
 
-  const searchPlaceholder = isRecommendationMode
-    ? atMax
-      ? "Maximum of 10 threads reached"
-      : "Search from existing threads"
-    : atMax
-      ? "Maximum of 10 threads reached"
-      : "Search by ticket number or summary";
+  const searchPlaceholder = atMax
+    ? "Maximum of 10 threads reached"
+    : "Search by ticket number or summary";
 
   const previewDropdownThreads = useMemo(
-    () =>
-      isRecommendationMode
-        ? filteredThreads
-        : filteredThreads.filter((thread) => !selectedIds.includes(thread.id)),
-    [filteredThreads, isRecommendationMode, selectedIds]
+    () => filteredThreads.filter((thread) => !selectedIds.includes(thread.id)),
+    [filteredThreads, selectedIds]
   );
 
   const previewFirstSelectableIndex = useMemo(
-    () =>
-      isRecommendationMode
-        ? firstSelectableIndex
-        : previewDropdownThreads.length > 0
-          ? 0
-          : -1,
-    [firstSelectableIndex, isRecommendationMode, previewDropdownThreads.length]
+    () => (previewDropdownThreads.length > 0 ? 0 : -1),
+    [previewDropdownThreads.length]
   );
 
-  const renderSearchDropdownItem = (thread, index, previewMode) => {
-    const isSelected = selectedIds.includes(thread.id);
-    const isPreHighlighted =
-      previewMode
-        ? index === previewFirstSelectableIndex
-        : !isSelected && index === firstSelectableIndex;
-
-    const itemContent = previewMode ? (
-      <>
-        <div className="text-sm font-medium leading-snug text-neutral-900">
-          {thread.title}
-        </div>
-        <div className="mt-0.5 text-xs leading-snug text-neutral-500">
-          {thread.number} • {thread.company}
-        </div>
-      </>
-    ) : (
-      <>
-        <div
-          className={`text-sm leading-snug ${
-            isSelected ? "text-neutral-500" : "text-neutral-900"
-          }`}
-        >
-          <span className="font-semibold">{thread.number}</span> {thread.title}
-        </div>
-        <div className="mt-1 text-xs leading-snug text-neutral-400">
-          <span>{thread.contact}</span>
-          <span className="mx-1.5 text-neutral-300">•</span>
-          <span>{thread.company}</span>
-        </div>
-      </>
-    );
-
-    if (!previewMode && isSelected) {
-      return (
-        <div
-          className="flex w-full items-start gap-2 rounded-md px-3 py-2.5 text-left"
-          aria-disabled="true"
-        >
-          <Check
-            size={14}
-            strokeWidth={2}
-            className="mt-0.5 shrink-0 text-emerald-600"
-            aria-hidden
-          />
-          <div className="min-w-0 flex-1">{itemContent}</div>
-        </div>
-      );
-    }
+  const renderSearchDropdownItem = (thread, index) => {
+    const isPreHighlighted = index === previewFirstSelectableIndex;
 
     return (
       <button
@@ -545,7 +604,12 @@ export default function TestAgentPanel({
           isPreHighlighted ? "bg-neutral-100" : ""
         }`}
       >
-        {itemContent}
+        <div className="text-sm font-medium leading-snug text-neutral-900">
+          {thread.title}
+        </div>
+        <div className="mt-0.5 text-xs leading-snug text-neutral-500">
+          {thread.number} • {thread.company}
+        </div>
       </button>
     );
   };
@@ -583,15 +647,13 @@ export default function TestAgentPanel({
           onMouseDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
-          {(isRecommendationMode ? filteredThreads : previewDropdownThreads).length > 0 ? (
+          {previewDropdownThreads.length > 0 ? (
             <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-              {(isRecommendationMode ? filteredThreads : previewDropdownThreads).map(
-                (thread, index) => (
-                  <li key={thread.id}>
-                    {renderSearchDropdownItem(thread, index, !isRecommendationMode)}
-                  </li>
-                )
-              )}
+              {previewDropdownThreads.map((thread, index) => (
+                <li key={thread.id}>
+                  {renderSearchDropdownItem(thread, index)}
+                </li>
+              ))}
             </ul>
           ) : (
             <div className="px-3 py-4 text-sm text-neutral-500">No matching threads</div>
@@ -621,149 +683,35 @@ export default function TestAgentPanel({
     [selectedIds]
   );
 
-  if (!isRecommendationMode) {
-    const renderPreviewRows = (threads, showRank) =>
-      threads.map((thread, index) => (
-        <PreviewThreadRow
-          key={thread.id}
-          thread={thread}
-          rank={showRank ? index + 1 : undefined}
-          onRemove={showRank ? undefined : handleRemoveThread}
-        />
-      ));
-
-    return (
-      <div className="flex h-full w-full flex-col">
-        <div className="shrink-0 px-6 pt-6">
-          <h2 className="text-base font-semibold text-neutral-900">Preview</h2>
-        </div>
-
-        <div className="relative z-20 shrink-0 px-6 pt-4">{searchInput}</div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-4">
-          {previewSelectedThreads.length > 0 ? (
-            showTeamGroupedThreads ? (
-              <div className="space-y-5">
-                {teamSections.map((section) => (
-                  <section key={section.team}>
-                    <div className="mb-2">
-                      <TeamLabel team={section.team} />
-                    </div>
-                    {renderPreviewRows(section.threads, hasRunTest)}
-                  </section>
-                ))}
-              </div>
-            ) : (
-              <div>
-                {!hasRunTest ? (
-                  <h3 className="mb-1 text-sm font-semibold text-neutral-900">Selected</h3>
-                ) : null}
-                {renderPreviewRows(
-                  hasRunTest ? displayedThreads : previewSelectedThreads,
-                  hasRunTest
-                )}
-              </div>
-            )
-          ) : (
-            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white px-6 py-16 text-center">
-              <ClipboardList
-                size={32}
-                strokeWidth={1.5}
-                className="mb-4 text-neutral-400"
-              />
-              <p className="max-w-[280px] text-sm leading-snug text-neutral-500">
-                Search for threads to see how your scoring rules would prioritize them.
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="shrink-0 px-6 pb-6 pt-2">
-          {hasRunTest ? (
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={handleReset}
-                className="flex-1 rounded-md border border-emerald-500 px-4 py-2.5 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                disabled={!canRunTest}
-                onClick={handleRunTest}
-                className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium text-white ${
-                  canRunTest
-                    ? "bg-emerald-500 hover:bg-emerald-600"
-                    : "cursor-not-allowed bg-emerald-400 opacity-50"
-                }`}
-              >
-                Run test
-              </button>
-            </div>
-          ) : (
-            runTestButton
-          )}
-        </div>
-      </div>
-    );
-  }
+  const renderPreviewRows = (threads, showRank) =>
+    threads.map((thread, index) => (
+      <PreviewThreadRow
+        key={thread.id}
+        thread={thread}
+        rank={showRank ? index + 1 : undefined}
+        onRemove={showRank ? undefined : handleRemoveThread}
+      />
+    ));
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="shrink-0 px-6 pt-6">
-        <h2 className="text-base font-semibold text-neutral-900">Test agent</h2>
-        <p className="mt-1 text-[13px] leading-snug text-neutral-500">
-          See how the Dispatch Agent ranks tickets with your current config.
-        </p>
-      </div>
-
-      <div className="relative z-20 shrink-0 px-6 pt-6">
-        <div className="mb-2 text-sm font-medium text-neutral-900">Search</div>
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">{searchInput}</div>
+      <div className="flex shrink-0 items-center justify-between gap-3 px-6 pt-6">
+        <h2 className="text-base font-semibold text-neutral-900">Preview</h2>
+        {onClose ? (
           <button
             type="button"
-            disabled={!canRunTest}
-            onClick={handleRunTest}
-            className={`shrink-0 rounded-md px-4 py-2 text-sm font-medium text-white ${
-              canRunTest
-                ? "bg-emerald-500 hover:bg-emerald-600"
-                : "cursor-not-allowed bg-emerald-400 opacity-50"
-            }`}
+            onClick={onClose}
+            className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+            aria-label="Close preview"
           >
-            Run test
+            <X size={16} />
           </button>
-        </div>
+        ) : null}
       </div>
 
-      <div className="mx-6 mt-5 shrink-0 border-t border-neutral-200" />
+      <div className="relative z-20 shrink-0 px-6 pt-4">{searchInput}</div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-8">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          {hasRunTest ? (
-            <div className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-neutral-900">
-          <span className="truncate">{rankedResultsHeader}</span>
-            </div>
-          ) : (
-            <div className="text-sm font-medium text-neutral-900">
-              {selectedIds.length > 0
-                ? `Threads to test (${selectedIds.length}/${MAX_TEST_THREADS})...`
-                : "Threads to test..."}
-            </div>
-          )}
-          {displayedThreads.length > 0 ? (
-            <button
-              type="button"
-              onClick={handleClearAll}
-              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700"
-            >
-              <X size={12} />
-              Clear all
-            </button>
-          ) : null}
-        </div>
-
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-4">
         {showFeedbackBanner ? (
           <TestAgentFeedbackBanner
             thanks={feedbackThanks}
@@ -780,65 +728,68 @@ export default function TestAgentPanel({
           onSubmit={handleFeedbackModalSubmit}
         />
 
-        {displayedThreads.length > 0 ? (
-          hasRunTest ? (
-            showTeamGroupedThreads && teamRecommendationSections ? (
-              <div className="space-y-5">
-                {teamRecommendationSections.map((section) => (
-                  <section key={section.team}>
-                    <div className="mb-2">
-                      <TeamLabel team={section.team} />
-                    </div>
-                    <RecommendationCardList
-                      recommendations={section.recommendations}
-                      fallbackStatus={fallbackStatus}
-                      onRemoveThread={handleRemoveThread}
-                    />
-                  </section>
-                ))}
-              </div>
-            ) : (
-              <RecommendationCardList
-                recommendations={recommendations}
-                fallbackStatus={fallbackStatus}
-                onRemoveThread={handleRemoveThread}
-              />
-            )
-          ) : showTeamGroupedThreads ? (
+        {previewSelectedThreads.length > 0 ? (
+          showTeamGroupedThreads ? (
             <div className="space-y-5">
               {teamSections.map((section) => (
                 <section key={section.team}>
                   <div className="mb-2">
                     <TeamLabel team={section.team} />
                   </div>
-                  <ThreadCardList
-                    threads={section.threads}
-                    hasRunTest={hasRunTest}
-                    rankingById={rankingById}
-                    onRemoveThread={handleRemoveThread}
-                  />
+                  {renderPreviewRows(section.threads, hasRunTest)}
                 </section>
               ))}
             </div>
           ) : (
-            <ThreadCardList
-              threads={displayedThreads}
-              hasRunTest={hasRunTest}
-              rankingById={rankingById}
-              onRemoveThread={handleRemoveThread}
-            />
+            <div>
+              {!hasRunTest ? (
+                <h3 className="mb-1 text-sm font-semibold text-neutral-900">Selected</h3>
+              ) : null}
+              {renderPreviewRows(
+                hasRunTest ? displayedThreads : previewSelectedThreads,
+                hasRunTest
+              )}
+            </div>
           )
         ) : (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white px-6 py-16 text-center">
-            <ListOrdered
+          <div className="flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white px-6 py-16 text-center">
+            <ClipboardList
               size={32}
               strokeWidth={1.5}
-              className="mb-4 text-neutral-300"
+              className="mb-4 text-neutral-400"
             />
-            <p className="max-w-[260px] text-sm leading-snug text-neutral-500">
-              Select one or more threads to see who the agent would assign.
+            <p className="max-w-[280px] text-sm leading-snug text-neutral-500">
+              Search for threads to see how your scoring rules would prioritize them.
             </p>
           </div>
+        )}
+      </div>
+
+      <div className="shrink-0 px-6 pb-6 pt-2">
+        {hasRunTest ? (
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={handleReset}
+              className="flex-1 rounded-md border border-emerald-500 px-4 py-2.5 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              disabled={!canRunTest}
+              onClick={handleRunTest}
+              className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium text-white ${
+                canRunTest
+                  ? "bg-emerald-500 hover:bg-emerald-600"
+                  : "cursor-not-allowed bg-emerald-400 opacity-50"
+              }`}
+            >
+              Run test
+            </button>
+          </div>
+        ) : (
+          runTestButton
         )}
       </div>
     </div>

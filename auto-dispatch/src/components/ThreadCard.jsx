@@ -46,8 +46,10 @@ export function PersonAvatar({ initials, colorClass, size = "md" }) {
     size === "sm"
       ? "h-4 w-4 text-[8px]"
       : size === "lg"
-        ? "h-7 w-7 text-[10px]"
-        : "h-5 w-5 text-[9px]";
+        ? "h-8 w-8 text-[11px]"
+        : size === "xl"
+          ? "h-9 w-9 text-xs"
+          : "h-5 w-5 text-[9px]";
   return (
     <span
       className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold ${sizeClass} ${colorClass}`}

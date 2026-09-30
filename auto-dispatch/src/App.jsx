@@ -779,7 +779,7 @@ function Row({
   stacked = false,
   align = "start",
 }) {
-  const borderCls = noBorder ? "" : "border-b border-neutral-100";
+  const borderCls = noBorder ? "" : "relative after:pointer-events-none after:absolute after:inset-x-4 after:bottom-0 after:h-px after:bg-[#DAD9DD]";
   const rowAlign = align === "center" ? "items-center" : "items-start";
   if (stacked) {
     return (
@@ -1381,7 +1381,7 @@ function AgentScopeTeamCard({
 
   return (
     <div className="bg-white border border-neutral-200 rounded-lg overflow-visible shadow-sm">
-      <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-3.5">
+      <div className="flex items-center gap-3 relative after:pointer-events-none after:absolute after:inset-x-4 after:bottom-0 after:h-px after:bg-[#DAD9DD] px-5 py-3.5">
         <span className="min-w-0 flex-1 truncate text-sm">
           <ScopeCardHeaderLabel scope={scope} />
         </span>
@@ -1398,7 +1398,7 @@ function AgentScopeTeamCard({
       </div>
 
       <div>
-          <div className="border-b border-neutral-100 px-5 py-4">
+          <div className="relative after:pointer-events-none after:absolute after:inset-x-4 after:bottom-0 after:h-px after:bg-[#DAD9DD] px-5 py-4">
             <div className="flex items-start justify-between gap-6">
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-neutral-900">Dispatch from</div>
@@ -1464,7 +1464,7 @@ function AgentScopeTeamCard({
 
           <div
             className={`px-5 py-4 ${
-              showExcludeTechs ? "border-b border-neutral-100" : ""
+              showExcludeTechs ? "relative after:pointer-events-none after:absolute after:inset-x-4 after:bottom-0 after:h-px after:bg-[#DAD9DD]" : ""
             }`}
           >
             <div className="flex items-start justify-between gap-6">
@@ -1769,7 +1769,7 @@ function RankingPropertyRow({ signal, onSetWeight, onPatchSignal, isLast }) {
   return (
     <div
       className={`flex items-center gap-6 px-5 py-4 ${
-        isLast ? "" : "border-b border-neutral-200"
+        isLast ? "" : "relative after:pointer-events-none after:absolute after:inset-x-4 after:bottom-0 after:h-px after:bg-[#DAD9DD]"
       }`}
     >
       <div className={`min-w-0 flex-1 ${unused ? "opacity-50" : ""}`}>
@@ -1873,7 +1873,7 @@ function RankingSignalsSection({ signals, onChangeSignals }) {
       </div>
 
       <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
-        <div className="border-b border-neutral-200 px-5 py-4 text-right text-sm font-medium text-neutral-500">
+        <div className="relative after:pointer-events-none after:absolute after:inset-x-4 after:bottom-0 after:h-px after:bg-[#DAD9DD] px-5 py-4 text-right text-sm font-medium text-neutral-500">
           Importance
         </div>
         {signals.map((signal, index) => (
@@ -2150,7 +2150,7 @@ function AgentCard({
       <div
         role="button"
         tabIndex={0}
-        className="flex items-center px-5 py-2.5 border-t border-neutral-100 bg-white rounded-b-xl cursor-pointer outline-none transition-colors hover:bg-[rgba(236,236,237,0.6)] active:bg-[rgba(236,236,237,0.75)] focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+        className="flex items-center px-5 py-2.5 relative after:pointer-events-none after:absolute after:inset-x-4 after:top-0 after:h-px after:bg-[#DAD9DD] bg-white rounded-b-xl cursor-pointer outline-none transition-colors hover:bg-[rgba(236,236,237,0.6)] active:bg-[rgba(236,236,237,0.75)] focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         onClick={(e) => {
           if (e.target.closest("[data-agent-card-menu]")) return;
           onOpen();
@@ -2986,7 +2986,7 @@ function ConfigPage({
                       error ? "border-red-300" : "border-neutral-200"
                     }`}
                   >
-                    <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 bg-white rounded-t-lg">
+                    <div className="flex items-center justify-between px-5 py-3 relative after:pointer-events-none after:absolute after:inset-x-4 after:bottom-0 after:h-px after:bg-[#DAD9DD] bg-white rounded-t-lg">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm text-neutral-700">
                           Dispatch to
@@ -3132,7 +3132,7 @@ function ConfigPage({
               title="Technician assignment"
               subcopy="Define how threads are assigned to technicians."
             >
-              <div className="border-b border-neutral-100 px-5 py-4">
+              <div className="relative after:pointer-events-none after:absolute after:inset-x-4 after:bottom-0 after:h-px after:bg-[#DAD9DD] px-5 py-4">
                 <div className="flex items-start justify-between gap-6">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-neutral-900">
@@ -3245,7 +3245,7 @@ function ConfigPage({
                   </div>
                 ) : null}
               </div>
-              <div className="border-b border-neutral-100 px-5 py-4">
+              <div className="relative after:pointer-events-none after:absolute after:inset-x-4 after:bottom-0 after:h-px after:bg-[#DAD9DD] px-5 py-4">
                 <div className="flex items-start justify-between gap-6">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-neutral-900">

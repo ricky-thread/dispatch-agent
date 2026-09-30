@@ -3,12 +3,12 @@ import * as SwitchPrimitives from "@radix-ui/react-switch";
 
 const SWITCH_SIZES = {
   default: {
-    root: "h-6 w-11",
-    thumb: "h-5 w-5 top-0.5",
+    root: "h-[18px] w-8",
+    thumb: "h-[14px] w-[14px] top-0.5",
   },
   sm: {
-    root: "h-5 w-9",
-    thumb: "h-4 w-4 top-0.5",
+    root: "h-[18px] w-8",
+    thumb: "h-[14px] w-[14px] top-0.5",
   },
 };
 

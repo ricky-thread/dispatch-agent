@@ -435,7 +435,11 @@ function Select({
             : "hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
         } ${triggerClassName}`}
       >
-        <span className={`truncate ${isEmpty ? "text-neutral-400" : "text-neutral-800"}`}>
+        <span
+          className={`truncate ${
+            disabled || isEmpty ? "text-neutral-400" : "text-neutral-800"
+          }`}
+        >
           {value || placeholder}
         </span>
         <ChevronDown size={14} className="text-neutral-400 shrink-0" />
@@ -2424,10 +2428,16 @@ function ConfigPage({
   // --- Technician assignment (Auto-assign)
   const [noTechAction, setNoTechAction] = useState("Retry assignment");
   const [boardExtraStatuses, setBoardExtraStatuses] = useState({});
+  const [perTeamLimitsEnabled, setPerTeamLimitsEnabled] = useState(
+    initialAgent?.perTeamLimitsEnabled ?? false
+  );
+  const [teamMaxActiveThreads, setTeamMaxActiveThreads] = useState(
+    initialAgent?.teamMaxActiveThreads ?? {}
+  );
   const [boardFallbackStatuses, setBoardFallbackStatuses] = useState({});
-  const [scheduleNoticeAmount, setScheduleNoticeAmount] = useState("1");
-  const [scheduleNoticeUnit, setScheduleNoticeUnit] = useState("hours");
-  const [bookingDurationAmount, setBookingDurationAmount] = useState("30");
+  const [scheduleNoticeAmount, setScheduleNoticeAmount] = useState("");
+  const [scheduleNoticeUnit, setScheduleNoticeUnit] = useState("minutes");
+  const [bookingDurationAmount, setBookingDurationAmount] = useState("");
   const [bookingDurationUnit, setBookingDurationUnit] = useState("minutes");
   const [maxActiveThreads, setMaxActiveThreads] = useState(
     initialAgent?.maxActiveThreads ?? "No limit"
@@ -2595,6 +2605,13 @@ function ConfigPage({
     () => teamScopes.flatMap((scope) => getScopeViews(scope)),
     [teamScopes]
   );
+  const perTeamLimitsActive = perTeamLimitsEnabled && teams.length > 1;
+  const effectiveMaxActiveThreads = useMemo(() => {
+    if (!perTeamLimitsActive) return maxActiveThreads;
+    return Object.fromEntries(
+      teams.map((team) => [team, teamMaxActiveThreads[team] ?? maxActiveThreads])
+    );
+  }, [perTeamLimitsActive, teams, teamMaxActiveThreads, maxActiveThreads]);
   const disabledTeamClaimsByScopeId = useMemo(() => {
     const claimsByScopeId = {};
     teamScopes.forEach((scope) => {
@@ -2645,6 +2662,8 @@ function ConfigPage({
       teamScopes: isRoute ? undefined : teamScopes,
       dispatchMode: isRoute ? undefined : dispatchMode,
       maxActiveThreads: isRoute ? undefined : maxActiveThreads,
+      perTeamLimitsEnabled: isRoute ? undefined : perTeamLimitsActive,
+      teamMaxActiveThreads: isRoute || !perTeamLimitsActive ? undefined : effectiveMaxActiveThreads,
       maxActiveThreadsStatuses: isRoute
         ? undefined
         : Array.from(new Set(Object.values(boardExtraStatuses).flat())),
@@ -3129,10 +3148,57 @@ function ConfigPage({
                     value={maxActiveThreads}
                     options={MAX_ACTIVE_THREADS_OPTIONS}
                     onChange={setMaxActiveThreads}
+                    disabled={perTeamLimitsActive}
                     menuMinWidth={SCOPE_DROPDOWN_MIN_WIDTH}
                   />
                 </div>
+                {teams.length > 1 ? (
+                  <div className="mt-4 flex items-start justify-between gap-6">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-neutral-900">
+                        Set different limits per Inbox Team
+                      </div>
+                      <p className="mt-0.5 text-sm leading-snug text-neutral-500">
+                        Override the max for teams that share boards
+                      </p>
+                    </div>
+                    <Switch
+                      checked={perTeamLimitsEnabled}
+                      onCheckedChange={(checked) => {
+                        setPerTeamLimitsEnabled(checked);
+                        if (checked) {
+                          setTeamMaxActiveThreads(
+                            Object.fromEntries(teams.map((team) => [team, maxActiveThreads]))
+                          );
+                        }
+                      }}
+                    />
+                  </div>
+                ) : null}
+                {perTeamLimitsActive ? (
+                  <ScopeNestedGroup className="!space-y-3">
+                    {teams.map((team) => (
+                      <div key={team} className="flex items-center justify-between gap-6">
+                        <div className="min-w-0 flex-1 text-sm font-medium text-neutral-900">
+                          {team} max active threads
+                        </div>
+                        <Select
+                          value={teamMaxActiveThreads[team] ?? maxActiveThreads}
+                          options={MAX_ACTIVE_THREADS_OPTIONS}
+                          onChange={(value) =>
+                            setTeamMaxActiveThreads((prev) => ({ ...prev, [team]: value }))
+                          }
+                          menuMinWidth={SCOPE_DROPDOWN_MIN_WIDTH}
+                        />
+                      </div>
+                    ))}
+                  </ScopeNestedGroup>
+                ) : null}
                 {scopeViews.length > 0 ? (
+                  <div className="mt-4">
+                    <div className="text-sm font-medium text-neutral-900">
+                      Define active statuses by board
+                    </div>
                   <ScopeNestedGroup>
                     {scopeViews.map((board) => {
                       const lockedStatuses = normalizeSelections(
@@ -3147,8 +3213,7 @@ function ConfigPage({
                           <div className="min-w-0 flex-1">
                             <div className="text-sm font-medium text-neutral-900">{board}</div>
                             <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                              Statuses that count toward a tech&apos;s active thread limit on this
-                              board.
+                              Statuses that count toward a tech&apos;s active thread limit.
                             </p>
                           </div>
                           <MultiSelect
@@ -3177,13 +3242,14 @@ function ConfigPage({
                       );
                     })}
                   </ScopeNestedGroup>
+                  </div>
                 ) : null}
               </div>
               <div className="border-b border-neutral-100 px-5 py-4">
                 <div className="flex items-start justify-between gap-6">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-neutral-900">
-                      Action when no tech is eligible
+                      Action when no tech is available
                     </div>
                     <p className="mt-0.5 text-sm leading-snug text-neutral-500">
                       {noTechAction === "Retry assignment"
@@ -3255,7 +3321,8 @@ function ConfigPage({
                         min={1}
                         value={scheduleNoticeAmount}
                         onChange={(e) => setScheduleNoticeAmount(e.target.value)}
-                        className="w-28 rounded-md border border-neutral-200 px-3 py-1.5 text-sm text-neutral-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        placeholder="#"
+                        className="w-[60px] rounded-md border border-neutral-200 px-3 py-1.5 text-sm text-neutral-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                       />
                       <Select
                         value={scheduleNoticeUnit}
@@ -3272,7 +3339,8 @@ function ConfigPage({
                         min={1}
                         value={bookingDurationAmount}
                         onChange={(e) => setBookingDurationAmount(e.target.value)}
-                        className="w-28 rounded-md border border-neutral-200 px-3 py-1.5 text-sm text-neutral-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        placeholder="#"
+                        className="w-[60px] rounded-md border border-neutral-200 px-3 py-1.5 text-sm text-neutral-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                       />
                       <Select
                         value={bookingDurationUnit}
@@ -3378,7 +3446,7 @@ function ConfigPage({
                 outputMode={
                   dispatchMode === "Auto-assign" ? "recommendation" : "points"
                 }
-                maxActiveThreads={maxActiveThreads}
+                maxActiveThreads={effectiveMaxActiveThreads}
                 calendarAvailabilityEnabled={calendarAvailabilityEnabled}
                 excludeTechs={excludeTechs}
                 fallbackStatus={

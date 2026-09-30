@@ -123,8 +123,17 @@ function parseMaxActiveThreads(maxActiveThreads) {
   return Number.isFinite(max) ? max : null;
 }
 
+/** maxActiveThreads is a single value, or a { [team]: value } map when limits are set per Inbox Team. */
+function resolveMaxForTech(tech, maxActiveThreads) {
+  if (maxActiveThreads && typeof maxActiveThreads === "object") {
+    const teamKey = tech.teams.find((team) => team in maxActiveThreads);
+    return teamKey ? maxActiveThreads[teamKey] : "No limit";
+  }
+  return maxActiveThreads;
+}
+
 function isAtMaxCapacity(tech, maxActiveThreads) {
-  const max = parseMaxActiveThreads(maxActiveThreads);
+  const max = parseMaxActiveThreads(resolveMaxForTech(tech, maxActiveThreads));
   return max != null && tech.activeThreadCount >= max;
 }
 

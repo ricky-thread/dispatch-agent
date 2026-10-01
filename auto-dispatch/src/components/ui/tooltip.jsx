@@ -16,7 +16,7 @@ export function Tooltip({ children, ...props }) {
 export const TooltipTrigger = TooltipPrimitive.Trigger;
 
 export const TooltipContent = React.forwardRef(function TooltipContent(
-  { className = "", sideOffset = 6, ...props },
+  { className = "", sideOffset = 6, arrowClassName = "", children, ...props },
   ref
 ) {
   return (
@@ -30,7 +30,12 @@ export const TooltipContent = React.forwardRef(function TooltipContent(
           className,
         ].join(" ")}
         {...props}
-      />
+      >
+        {children}
+        {arrowClassName ? (
+          <TooltipPrimitive.Arrow className={arrowClassName} width={14} height={7} />
+        ) : null}
+      </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   );
 });

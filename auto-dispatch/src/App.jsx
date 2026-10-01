@@ -644,19 +644,33 @@ function MultiSelect({
               }
               if (lockedValues.includes(opt)) {
                 return (
-                  <div
-                    key={opt}
-                    role="option"
-                    aria-selected
-                    aria-disabled="true"
-                    className="flex w-full cursor-default items-center gap-2 bg-neutral-50 px-3 py-1.5 text-left text-sm text-neutral-500"
-                  >
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-neutral-300 bg-neutral-200">
-                      <Check size={11} className="text-neutral-400" strokeWidth={3} />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{renderOptionLabel?.(opt) || opt}</span>
-                    <Lock size={13} className="shrink-0 text-neutral-400" aria-hidden />
-                  </div>
+                  <Tooltip key={opt} delayDuration={120}>
+                    <TooltipTrigger asChild>
+                      <div
+                        role="option"
+                        aria-selected
+                        aria-disabled="true"
+                        className="flex w-full cursor-default items-center gap-2 bg-neutral-50 px-3 py-1.5 text-left text-sm text-neutral-500"
+                      >
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-neutral-300 bg-neutral-200">
+                          <Check size={11} className="text-neutral-400" strokeWidth={3} />
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {renderOptionLabel?.(opt) || opt}
+                        </span>
+                        <Lock size={13} className="shrink-0 text-neutral-400" aria-hidden />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      align="center"
+                      sideOffset={8}
+                      arrowClassName="fill-white"
+                      className="max-w-[280px] rounded-xl !border-neutral-200 bg-white px-4 py-3 text-sm font-semibold leading-snug text-neutral-900 shadow-xl"
+                    >
+                      Dispatch status: assigned threads here count toward the tech&apos;s limit.
+                    </TooltipContent>
+                  </Tooltip>
                 );
               }
               return (
@@ -3139,9 +3153,8 @@ function ConfigPage({
                       Max active threads
                     </div>
                     <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                      A tech is at capacity once their active threads reach this number. That
-                      includes assigned threads still in a dispatch status, plus any statuses you
-                      add below.
+                      A tech stops receiving threads once their active count reaches this number.
+                      Set which statuses count by board below.
                     </p>
                   </div>
                   <Select
@@ -3159,7 +3172,7 @@ function ConfigPage({
                         Set different limits per Inbox Team
                       </div>
                       <p className="mt-0.5 text-sm leading-snug text-neutral-500">
-                        Override the max for teams that share boards
+                        Override the max active threads per team
                       </p>
                     </div>
                     <Switch
@@ -3180,7 +3193,7 @@ function ConfigPage({
                     {teams.map((team) => (
                       <div key={team} className="flex items-center justify-between gap-6">
                         <div className="min-w-0 flex-1 text-sm font-medium text-neutral-900">
-                          {team} max active threads
+                          {team}
                         </div>
                         <Select
                           value={teamMaxActiveThreads[team] ?? maxActiveThreads}
